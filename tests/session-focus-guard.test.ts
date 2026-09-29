@@ -63,9 +63,20 @@ test('a tap on the editing surface closes the window early', () => {
   assert.match(SOURCE, /target\.closest\(COMPOSER_INPUT_SELECTOR\) !== null\) restore\(\)/)
 })
 
+test('the window keeps a focusin fallback that blurs synchronously', () => {
+  // 2026-09-29 headless correction: the host focuses the remounted editor
+  // from the commit's synchronous phase, before the observer microtask can
+  // shadow it — the window must therefore blur any focus that still lands
+  // on the editing surface while it is open (composer-keyboard-guard's
+  // real-device-proven recipe). Capture phase, gated on the window flag.
+  assert.match(SOURCE, /const onFocusIn = \(event: Event\): void => \{\s*\n\s*if \(!windowOpen\) return\s*\n\s*const target = event\.target\s*\n\s*if \(target instanceof HTMLElement && target\.closest\(COMPOSER_INPUT_SELECTOR\) !== null\) target\.blur\(\)/)
+  assert.match(SOURCE, /document\.addEventListener\('focusin', onFocusIn, true\)/)
+  assert.match(SOURCE, /document\.removeEventListener\('focusin', onFocusIn, true\)/)
+})
+
 test('disposal unsubscribes, disconnects and restores', () => {
   assert.match(SOURCE, /unsubscribe\(\)\s*\n\s*observer\.disconnect\(\)/)
-  assert.match(SOURCE, /document\.removeEventListener\('pointerdown', onPointerDown, true\)\s*\n\s*restore\(\)/)
+  assert.match(SOURCE, /document\.removeEventListener\('pointerdown', onPointerDown, true\)\s*\n\s*document\.removeEventListener\('focusin', onFocusIn, true\)\s*\n\s*restore\(\)/)
 })
 
 test('the effect is wired into the client entry', () => {

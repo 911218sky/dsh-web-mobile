@@ -31,6 +31,21 @@ import { installMobileEffect } from './phone-chrome.ts'
  * window; arming also shadows an already-present input for switches that
  * reuse the element.
  *
+ * 2026-09-29 headless correction (issue #140 verification run): the shadow
+ * alone is NOT sufficient. When the InputBar remounts for the new session,
+ * the host's focus call runs inside the commit's synchronous layout-effect
+ * phase — BEFORE any MutationObserver microtask — so the freshly mounted
+ * editor got focused while it still had no shadow (focusin measured at
+ * t=314ms with marker=false; the observer only shadowed it afterwards). The
+ * guard therefore keeps a focusin fallback for the window's lifetime: any
+ * DOM focus landing on the editing surface is blurred synchronously — the
+ * same recipe `composer-keyboard-guard.ts` proved on a real device in the
+ * 2026-09-23 keepFocus loop (blur at the focusin capture phase happens
+ * before the IME can rise, and drafts/caret live in the host's keyboard
+ * state, not in DOM focus). A real tap is unaffected: the pointerdown
+ * early-close below shuts the window before the browser's native focus of
+ * that tap runs.
+ *
  * DOM contract (verified against 0.1.7-rc.2):
  * - `[data-composer-input]` — the Lexical contenteditable surface (count=1;
  *   present in every released host since 0.1.2-alpha.2, per
@@ -108,6 +123,18 @@ export function installSessionFocusGuard(ctx: ClientContext): void {
       if (target instanceof Element && target.closest(COMPOSER_INPUT_SELECTOR) !== null) restore()
     }
 
+    // Timing fallback for the window's lifetime: the host focuses the freshly
+    // mounted editor from the commit's synchronous phase, before the observer
+    // microtask can shadow it (headless-measured 2026-09-29, see header), so
+    // any focus that still lands on the editing surface inside the window is
+    // blurred on the spot — before the IME can rise. User taps never reach
+    // this: their pointerdown closed the window above.
+    const onFocusIn = (event: Event): void => {
+      if (!windowOpen) return
+      const target = event.target
+      if (target instanceof HTMLElement && target.closest(COMPOSER_INPUT_SELECTOR) !== null) target.blur()
+    }
+
     // Invalidation callback (zustand-style): re-read the snapshot and arm only
     // when the current session id actually changed — list churn (titles,
     // ordering, refresh) must never open the window.
@@ -120,10 +147,12 @@ export function installSessionFocusGuard(ctx: ClientContext): void {
 
     observer.observe(document.documentElement, { childList: true, subtree: true })
     document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('focusin', onFocusIn, true)
     return () => {
       unsubscribe()
       observer.disconnect()
       document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('focusin', onFocusIn, true)
       restore()
     }
   })

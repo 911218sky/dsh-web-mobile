@@ -720,26 +720,30 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
   /* --- ContextMeter hit area on 0.1.7-rc.2+ (issue #140) ---
      rc.2 renders the meter in the dock row under the card, a sibling of the
      card inside the InputBar root (not in the trailing lane — see the
-     generation note above). The trigger is officially padding:1px 8px around
-     a 14px ring + percent text: ~22px tall, far under the touch minimum, and
-     the reporter mis-touches it one-handed. Regrow the hit area IN PLACE with
-     a transparent ::after (the 📎 recipe): no layout change, ring ink
-     untouched, so the stats-line overlay math — which anchors the meter
-     root's top-left corner onto the 16px reserve box inside the folded
-     status strip — is unaffected. The dock row owns only this one dialog
-     trigger (the TPS stats pills render plain text), so a scoped
-     aria-haspopup="dialog" anchor cannot cross-match anything.
-     Knobs: vertical ±4px keeps the box clear of the card's bottom edge above
-     — the send/stop keys sit there, and growing into them would CREATE the
-     mis-touch this rule exists to remove; horizontal ±12px rides inside the
-     scrollable strip and costs nothing. */
+     generation note above). The trigger is officially 16x20px (headless
+     390x844 measured), far under the touch minimum, and the reporter
+     mis-touches it one-handed. Regrow the hit area IN PLACE with a
+     transparent ::after (the 📎 recipe): no layout change, ring ink
+     untouched. The stats-line overlay moves the meter root onto the 16px
+     reserve box at the card's bottom edge (measured y=783 while the dock
+     box starts at y=808), so the ::after follows the ring's real position,
+     not the dock box. The dock row owns only this one dialog trigger (the
+     TPS stats pills render plain text), so a scoped aria-haspopup="dialog"
+     anchor cannot cross-match anything.
+     Knobs: vertical ±4px is safe (the expanded box stays inside the
+     card/dock gutter, away from the keys); horizontal may only grow LEFT —
+     the send key sits 5px to the right of the trigger (measured trigger
+     right edge x=317, send key left edge x=322), so growing right bites
+     into the send key and CREATES the mis-touch this rule exists to
+     remove. Asymmetry is deliberate: inset -4px top/bottom, -12px left,
+     0 right. */
   [data-phase] [class*="_dock"] [class*="_trigger"][aria-haspopup="dialog"] {
     position: relative;
   }
   [data-phase] [class*="_dock"] [class*="_trigger"][aria-haspopup="dialog"]::after {
     content: '';
     position: absolute;
-    inset: -4px -12px;
+    inset: -4px 0px -4px -12px;
   }
 
   /* --- Third-party model seats (issue #60: @hytime/dsh-thinking-effort) ---
