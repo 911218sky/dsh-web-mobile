@@ -699,3 +699,10 @@ hero 态存在一个**空的、宿主隐藏但仍在文档流**的 session heade
 - **真机回归**：修复后同一实验，`ih` 仍在 754↔471 之间变，但卡片 3086 帧全程 `h=600px`、矩形恒为 `[8,12,344,600]`（修复前 600 → 447.25）。回归锚＝`tests/stable-viewport-keyboard.test.ts`（3 断言：变量维护规则 / 两条 `max-height` 必须用它且不得留裸 `100dvh` / 列表键盘内边距）。
 - **被否决**：给 `max-height` 加过渡（把跳变成慢动作抽，实测无效）；`interactive-widget=resizes-visual`（会连 composer 一起不再避让键盘，爆炸半径过大）；用 `svh`/`lvh` 替代 `dvh`（实测同样随键盘变，无效）。
 - **（同一坑的第三半）弹层自己再叠一层遮罩 = 全屏亮度跳一步 = 「全屏闪」**（2026-09-25，报障人定案「不闪了」）。设置面板（`data-shortcut-modal="settings"`）自己已经压了一层 `rgba(0,0,0,.24)` 遮罩；快捷键弹层是 primitives Modal，**又**压一层同样的 0.24 —— 打开那一瞬整屏暗度 `0.24 → 0.42` 一步跳深。手机档这个弹层只能从设置面板里打开，第二层纯属重复变暗。叠加的第二层 `::after` 还挂着宿主的 `_modalEnter`（0.2s 透明度淡入）；上一版按「两层文字互相透出」把卡片自己的动画掐掉了却**特意保留**遮罩淡入，实测同样看得见。修法：手机档把该弹层遮罩的 `::after` 改成 `animation: none` + `background: transparent`（`layout.css.ts` 的 `:has(> [aria-modal="true"][data-shortcut-modal="shortcuts"]) > [class*="_mask"]::after`）—— 开合前后整屏明暗完全一致，只剩卡片本身的变化。**判据要问对**：报障人先说「小闪」再说「全屏闪」，直到问准「发生在打开那一瞬」才指向这一条；只盯键盘/尺寸会一直查偏。回归锚＝`tests/stable-viewport-keyboard.test.ts` 的「opening the shortcut modal never changes full-screen luminance」。
+
+### ContextMeter 挪位
+
+- **宿主 0.1.7-rc.2 把 ContextMeter 从 composer 尾道挪进 dock 行，插件全部尾道 meter 规则集体哑火**（2026-09-29，issue #140 ③a 取证）。rc.2 的 JSX 把 meter 渲染成 InputBar 根下与卡片平级的兄弟（`uV2eYG_dock` 行，挨着 TPS stats pills；`dsh-client-ui-conversation/lib/client.js` L17536-17542），不再是尾道 `[class*="_trailing"]` 的子节点——本插件「上下文圈 28×34 命中盒」等尾道规则全是结构锚，在 rc.2 上一条都不再命中（不误伤、也不生效），触发器回落到官方 `padding:1px 8px`（~22px 高，触控下限之下，报障人单手误触区）。**2026-09-23 的 rc.1 适配审计漏了这条**：对账只核了 CSS gate / marker 在不在，没有重验组件的**渲染位置**。
+- **修法**：`layout.css.ts` 新增 dock 行 in-place 命中盒（`[data-phase] [class*="_dock"] [class*="_trigger"][aria-haspopup="dialog"]` + `::after inset:-4px -12px`，📎 配方；dock 行里只有这一个 dialog 触发器，stats pills 是纯文本，不会跨匹配）；尾道旧规则**原样保留**给 0.1.5/0.1.6 代（那些代真的渲染在尾道，结构锚 inert 于 rc.2）。竖向 ±4px 是硬约束：再往上扩就啃到卡片底缘的发送/停止键，反而制造误触。
+- **教训（升级对账方法论）**：宿主升级对账不能只验「规则文本还在 / gate 标记对不对」——宿主把组件**挪个父节点**，所有锚在旧父节点的规则就整族静默失效，而静态对账全程绿。升级审计必须重验关键控件的**实际渲染位置**（读 JSX/实测 DOM 祖先链），渲染位置本身就是一条契约。
+- 验证＝真机 / headless CDP 量测 dock 行触发器命中盒（本条 CSS 无单元回归锚，`css-structure-check` 只查格式）。
