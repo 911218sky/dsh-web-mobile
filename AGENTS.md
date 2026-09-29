@@ -142,12 +142,13 @@ dsh web
     键盘不起；点击不受影响（浏览器原生聚焦不经过 JS 方法），搜一次仍是一次点按。影子在
     MutationObserver（只盯 `document.body` 的 childList）里安装 —— 微任务早于 React 的被动 effect，
     所以第一帧抢焦也拦得住；弹层移除时 `delete` 还原。
-  - `session-focus-guard.ts` — 手机档：进入会话不自动弹软键盘（issue #140）。宿主 InputBar 的
-    `[locked, sessionId, editor]` passive effect 在每次切会话时程序化聚焦编辑器；本效果订阅
-    `ctx.sessions.list` 快照、仅在当前会话 id 变化时开一个 800ms 影子窗口（复用
-    `composer-keyboard-guard.ts` 的 own no-op focus 影子与标记），窗口内 MutationObserver 微任务
-    抢在宿主 passive effect 之前给新挂载的 `[data-composer-input]` 装影子；用户点输入框当场解除
-    窗口，原生点按永远不受影响。
+  - `session-focus-guard.ts` — 手机档：进入会话不自动弹软键盘（issue #140）。宿主 InputBar 在
+    每次切会话时程序化聚焦编辑器；本效果订阅 `ctx.sessions.list` 快照、仅在当前会话 id 变化时开
+    一个 800ms 影子窗口（复用 `composer-keyboard-guard.ts` 的 own no-op focus 影子与标记），
+    窗口内 MutationObserver 微任务给新挂载的 `[data-composer-input]` 装影子；宿主聚焦实测跑在
+    commit 同步相（早于微任务，headless t=314ms 无影子焦点实锤），窗口期另有 focusin 捕获
+    **同步 blur** 兜底（composer guard 2026-09-23 同型）；用户点输入框当场解除窗口，原生点按
+    永远不受影响。
   - Reconciler task modules: `preview-fullscreen.ts`, `overlay-backdrop-fab.ts`, `panel-exit.ts`.
 - Styles: `src/client/styles/index.ts` concatenates `base → layout → compat → misc` in that load-bearing order and injects one `<style data-plugin>` tag. Mobile rules target `(max-width: 1023px) and (pointer: coarse)` (keep every top-level media block in sync with `MOBILE_QUERY`); the desktop hide block in misc.css.ts is its exact complement and must preserve the uninstalled layout.
 - Third-party compatibility is implemented through scoped DOM markers, stable `data-*` attributes, `MutationObserver`, and carefully scoped class/text anchors. Never modify third-party source packages.
