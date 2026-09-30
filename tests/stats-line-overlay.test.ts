@@ -38,6 +38,16 @@ test('overlay markers exist in source and stylesheet', () => {
   )
 })
 
+test('placeOverlay centers the host on its slot (issue #140 alignment)', () => {
+  // The 20px ring top-aligned on its 16px reserve hung its center 2-4px
+  // below the neighbouring keys (measured 2026-09-29: ring center y=793 vs
+  // model key 791 / send key 789, reported as「不与其他小UI对齐」); the
+  // overlay must center on the reserve box. Same-height overlays (the
+  // 0.1.5/0.1.6 TPS text) are unaffected by the centering.
+  assert.match(src, /const hostRect = host\.getBoundingClientRect\(\)/)
+  assert.match(src, /const top = box\.top - base\.top - container\.clientTop - \(hostRect\.height - box\.height\) \/ 2/)
+})
+
 test('dispose hands the official layout back', () => {
   for (const key of ['stats', 'stats-ring', 'stats-ring-dock', 'stats-tps', 'stats-tps-row']) {
     assert.ok(src.includes(`'${key}'`), key)

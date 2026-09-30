@@ -718,32 +718,33 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
   }
 
   /* --- ContextMeter hit area on 0.1.7-rc.2+ (issue #140) ---
-     rc.2 renders the meter in the dock row under the card, a sibling of the
-     card inside the InputBar root (not in the trailing lane — see the
-     generation note above). The trigger is officially 16x20px (headless
-     390x844 measured), far under the touch minimum, and the reporter
-     mis-touches it one-handed. Regrow the hit area IN PLACE with a
-     transparent ::after (the 📎 recipe): no layout change, ring ink
-     untouched. The stats-line overlay moves the meter root onto the 16px
-     reserve box at the card's bottom edge (measured y=783 while the dock
-     box starts at y=808), so the ::after follows the ring's real position,
-     not the dock box. The dock row owns only this one dialog trigger (the
-     TPS stats pills render plain text), so a scoped aria-haspopup="dialog"
-     anchor cannot cross-match anything.
-     Knobs: vertical ±4px is safe (the expanded box stays inside the
-     card/dock gutter, away from the keys); horizontal may only grow LEFT —
-     the send key sits 5px to the right of the trigger (measured trigger
-     right edge x=317, send key left edge x=322), so growing right bites
-     into the send key and CREATES the mis-touch this rule exists to
-     remove. Asymmetry is deliberate: inset -4px top/bottom, -12px left,
-     0 right. */
+     The stats-line overlay parks the ring in the composer card's trailing
+     lane (right cluster next to the send key — a deliberate 2026-09-23
+     placement, kept per the reporter's confirmation at acceptance). The
+     trigger is officially 16x20px (headless 390x844 measured), far under
+     the touch minimum, and the reporter mis-touches it one-handed. Regrow
+     the hit area IN PLACE with a transparent ::after (the 📎 recipe): no
+     layout change, ring ink untouched.
+     The lane geometry is tight (all headless-measured): model key right
+     edge x=295, ring x=301-317, send key left edge x=322 — the ring sits
+     between two keys with only 6px/5px gaps, so the box may grow at most
+     -5px left and -4px right (1px clearance to each neighbour; the old
+     symmetric -12px bit into BOTH keys). Vertically the lane is open:
+     -6px up (row top) and -8px down (into the non-interactive dock-row
+     gutter) give a 25x36 box. After the placeOverlay centering fix the
+     ring's center matches the cluster (y=791), so aim and box agree.
+     Knobs: the four inset values, each clamped by its neighbouring edge.
+     The dock container owns only this one dialog trigger (the TPS stats
+     pills render plain text), so a scoped aria-haspopup="dialog" anchor
+     cannot cross-match anything; the DOM ancestry (ring inside the dock
+     container) is unchanged by the overlay's absolute positioning. */
   [data-phase] [class*="_dock"] [class*="_trigger"][aria-haspopup="dialog"] {
     position: relative;
   }
   [data-phase] [class*="_dock"] [class*="_trigger"][aria-haspopup="dialog"]::after {
     content: '';
     position: absolute;
-    inset: -4px 0px -4px -12px;
+    inset: -6px -4px -8px -5px;
   }
 
   /* --- Third-party model seats (issue #60: @hytime/dsh-thinking-effort) ---
