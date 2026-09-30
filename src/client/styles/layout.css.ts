@@ -724,13 +724,12 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
      official trigger is 16x20px, far under the touch minimum. Regrow the
      hit area IN PLACE with a transparent ::after (the 📎 recipe).
      2026-09-29 acceptance, final geometry (headless-measured): the ring
-     svg and its reserve are enlarged 16 -> 24px (compat.css.ts — the
-     reporter expected a bigger, visibly tappable ring), the width growth
-     is absorbed by the lane's 99px left slack so the key gaps stay 6px/5px
-     (model key right edge, send key left edge), and the hit box is a
-     SYMMETRIC 32x32 square (inset -4px) matching the enlarged ring —
-     1px clearance to each neighbouring key. Reporter-visible changes: the
-     ring is 50% bigger, sits 8px further left, and aim/box agree.
+     svg and its reserve are set to 20px (compat.css.ts — 16px was too
+     small to aim, 24px too big), the width growth is absorbed by the
+     lane's left slack so the key gaps stay 6px/5px, and the hit box is a
+     SYMMETRIC 26x26 square (inset -3px) hugging the ring — 3px/2px
+     clearance to the model and send keys. The track is deepened to 25%
+     black (compat.css.ts) so the donut reads as a meter, not a spinner.
      Knobs: the svg/reserve size (compat.css.ts) and this inset; the box
      must stay a square hugging the ring, its edges clamped by the two
      neighbouring keys. The dock container owns only this one dialog
@@ -744,7 +743,7 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
   [data-phase] [class*="_dock"] [class*="_trigger"][aria-haspopup="dialog"]::after {
     content: '';
     position: absolute;
-    inset: -4px;
+    inset: -3px;
   }
 
   /* --- Third-party model seats (issue #60: @hytime/dsh-thinking-effort) ---

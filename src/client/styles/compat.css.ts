@@ -712,12 +712,11 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
   [data-mobile-nav="stats-ring"] svg {
     display: inline-block !important;
-    /* 2026-09-29 验收放大（issue #140）：16px 的环在 26-34px 的键丛里小到
-       难以瞄准（店主「不好点」「我以为环会变大」）。24px 与 32×32 命中盒
-       （layout.css.ts）匹配，看得见摸得着；放大的宽度由尾道左侧富余吸收
-       （实测 99px），模型/发送键位置与间隙不变。 */
-    width: 24px !important;
-    height: 24px !important;
+    /* 2026-09-29 验收定稿（issue #140）：16px 难瞄准、24px 过大（店主「太大了」），
+       定稿 20px——比原生大 25%、在 34px 行内比例协调；与 26×26 命中盒
+       （见 layout.css.ts 的环规则）匹配。增宽由尾道左侧富余吸收，按键间距不变。 */
+    width: 20px !important;
+    height: 20px !important;
     flex: 0 0 auto !important;
   }
   /* 轨道深化（2026-09-29 验收，issue #140）：宿主轨道只有 12% 黑，环放大到
@@ -739,10 +738,10 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   [data-mobile-nav="stats-ring-reserve"] {
     flex: 0 0 auto !important;
     display: inline-block !important;
-    /* 24px 与放大后的环（上方 svg 规则）同尺寸：占位顶住的槽位即环的落点，
-       尾道左侧富余吸收增宽，键间隙不变。 */
-    width: 24px !important;
-    height: 24px !important;
+    /* 20px 与定稿的环（上方 svg 规则）同尺寸：占位顶住的槽位即环的落点，
+       尾道左侧富余吸收增宽，按键间距不变。 */
+    width: 20px !important;
+    height: 20px !important;
     margin: 0 2px 0 0 !important;
     padding: 0 !important;
   }
