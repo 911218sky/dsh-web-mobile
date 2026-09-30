@@ -712,8 +712,12 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
   [data-mobile-nav="stats-ring"] svg {
     display: inline-block !important;
-    width: 16px !important;
-    height: 16px !important;
+    /* 2026-09-29 验收放大（issue #140）：16px 的环在 26-34px 的键丛里小到
+       难以瞄准（店主「不好点」「我以为环会变大」）。24px 与 32×32 命中盒
+       （layout.css.ts）匹配，看得见摸得着；放大的宽度由尾道左侧富余吸收
+       （实测 99px），模型/发送键位置与间隙不变。 */
+    width: 24px !important;
+    height: 24px !important;
     flex: 0 0 auto !important;
   }
   /* 环与 TPS 读数不再搬动宿主 React 节点（#104：搬动后宿主卸载调 removeChild
@@ -728,8 +732,10 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   [data-mobile-nav="stats-ring-reserve"] {
     flex: 0 0 auto !important;
     display: inline-block !important;
-    width: 16px !important;
-    height: 16px !important;
+    /* 24px 与放大后的环（上方 svg 规则）同尺寸：占位顶住的槽位即环的落点，
+       尾道左侧富余吸收增宽，键间隙不变。 */
+    width: 24px !important;
+    height: 24px !important;
     margin: 0 2px 0 0 !important;
     padding: 0 !important;
   }
