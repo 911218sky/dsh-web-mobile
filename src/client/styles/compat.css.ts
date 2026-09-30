@@ -712,11 +712,11 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
   [data-mobile-nav="stats-ring"] svg {
     display: inline-block !important;
-    /* 2026-09-29 验收定稿（issue #140）：16px 难瞄准、24px 过大（店主「太大了」），
-       定稿 20px——比原生大 25%、在 34px 行内比例协调；与 26×26 命中盒
-       （见 layout.css.ts 的环规则）匹配。增宽由尾道左侧富余吸收，按键间距不变。 */
-    width: 20px !important;
-    height: 20px !important;
+    /* 2026-09-29 验收定稿（issue #140）：16px 难瞄准、24px 过大、20px 仍偏大，
+       店主拍板 18px；与 26×26 命中盒（见 layout.css.ts 的环规则）匹配。
+       增宽由尾道左侧富余吸收，按键间距不变。 */
+    width: 18px !important;
+    height: 18px !important;
     flex: 0 0 auto !important;
   }
   /* 轨道深化（2026-09-29 验收，issue #140）：宿主轨道只有 12% 黑，环放大到
@@ -738,10 +738,10 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   [data-mobile-nav="stats-ring-reserve"] {
     flex: 0 0 auto !important;
     display: inline-block !important;
-    /* 20px 与定稿的环（上方 svg 规则）同尺寸：占位顶住的槽位即环的落点，
+    /* 18px 与定稿的环（上方 svg 规则）同尺寸：占位顶住的槽位即环的落点，
        尾道左侧富余吸收增宽，按键间距不变。 */
-    width: 20px !important;
-    height: 20px !important;
+    width: 18px !important;
+    height: 18px !important;
     margin: 0 2px 0 0 !important;
     padding: 0 !important;
   }
