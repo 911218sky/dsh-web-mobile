@@ -55,8 +55,10 @@ const COMPOSER_CARD_SELECTOR = '[data-composer-card]'
 /** The Lexical editing surface (the only element allowed to raise the keyboard). */
 const COMPOSER_INPUT_SELECTOR = '[data-composer-input]'
 
-/** Re-arm marker kept on the editor element while its focus is shadowed. */
-const SHADOW_MARKER = 'data-mobile-nav-focus-shadow'
+/** Re-arm marker kept on the editor element while its focus is shadowed.
+ *  Exported: session-focus-guard.ts shares the same shadow slot (one marker,
+ *  one own-property recipe) so both guards stay interoperable. */
+export const SHADOW_MARKER = 'data-mobile-nav-focus-shadow'
 
 export function installComposerKeyboardGuard(ctx: ClientContext): void {
   installMobileEffect(ctx, 'dsh-web-mobile: composer keyboard guard', () => {

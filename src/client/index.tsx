@@ -15,6 +15,7 @@ import { installWorkspaceChipToggle } from './effects/workspace-chip-toggle.ts'
 import { installTeamChipToggle } from './effects/team-chip-toggle.ts'
 import { installModelMenuAnchor } from './effects/model-menu-anchor.ts'
 import { installShortcutModalKeyboardGuard } from './effects/shortcut-modal-keyboard-guard.ts'
+import { installSessionFocusGuard } from './effects/session-focus-guard.ts'
 import { installAionuiCompat } from './effects/aionui-compat.ts'
 import { createPanelExit, installPanelRowExit } from './effects/panel-exit.ts'
 import { createRafScheduler } from './core/raf-scheduler.ts'
@@ -240,6 +241,12 @@ export function apply(ctx: ClientContext): void {
   // EDIT, and the keyboard shrinking the viewport resizes the sheet (owner
   // report: 「打开的时候还是会闪，而且还会唤起键盘」).
   installShortcutModalKeyboardGuard(ctx)
+  // Entering a session (issue #140): the host's InputBar focuses the editor
+  // from a [locked, sessionId, editor] passive effect on every switch, which
+  // raises the soft keyboard over the history the user wanted to read. A short
+  // shadow-focus window per observed session switch swallows that one
+  // autofocus; real taps are unaffected.
+  installSessionFocusGuard(ctx)
 
   installPhoneChrome(ctx)
 

@@ -54,7 +54,15 @@ export function createStatsLineTask(): ReconcilerTask {
     const box = reserve.getBoundingClientRect()
     const base = container.getBoundingClientRect()
     const left = box.left - base.left - container.clientLeft
-    const top = box.top - base.top - container.clientTop
+    // Center the host on its slot vertically, not top-align it. Measured
+    // 2026-09-29 (issue #140 acceptance): the 20px ring top-aligned on its
+    // 16px reserve hung its center at y=793 while the neighbouring keys sit
+    // at 789-791 — reported as「不与其他小UI对齐」. Centering is a no-op for
+    // same-height overlays (the 0.1.5/0.1.6 TPS text) and aligns the ring
+    // with the cluster. hostRect is read BEFORE the style write below; its
+    // height does not depend on top/left, so the math is stable across flushes.
+    const hostRect = host.getBoundingClientRect()
+    const top = box.top - base.top - container.clientTop - (hostRect.height - box.height) / 2
     const styled = host as HTMLElement
     if (styled.style.left !== `${left}px`) styled.style.left = `${left}px`
     if (styled.style.top !== `${top}px`) styled.style.top = `${top}px`

@@ -448,6 +448,15 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
   [data-phase] [class*="_card"]:has(textarea, [data-composer-input]) [class*="_row"]:has([class*="_trailing"]):has([class*="_primary"] ~ [class*="_primary"]) {
     flex-wrap: wrap;
   }
+  /* Issue #140: in that same dual-primary form the stop key and the send key
+     sit one 3px lane-gap apart — two same-shaped 34px pills where a mis-touch
+     on the left one interrupts the running reply. The 2026-09-23 「焊在一起」
+     3px decision keeps governing the main session's [model][send] cluster;
+     only this form (the one with two adjacent destructive-adjacent primaries)
+     gets +8px between the stop and the send key. Knob: margin-right. */
+  [data-phase] [class*="_card"]:has(textarea, [data-composer-input]) [class*="_row"]:has([class*="_trailing"]):has([class*="_primary"] ~ [class*="_primary"]) > [class*="_trailing"] > [class*="_primary"]:has(~ [class*="_primary"]) {
+    margin-right: 8px;
+  }
   [data-phase] [class*="_card"]:has(textarea, [data-composer-input]) [class*="_row"]:has([class*="_trailing"]) > :first-child {
     flex: 0 1 auto;
     min-width: 0;
@@ -608,7 +617,14 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
      itself is shrinkable, so a squeezed root lets the trigger paint over
      the pinned send button. Keep the whole meter at its natural size; its
      trigger uses aria-haspopup="dialog", so the model-selector menu rules
-     (keyed on "menu") still do not apply. */
+     (keyed on "menu") still do not apply.
+     GENERATION NOTE (issue #140, 2026-09-29): 0.1.7-rc.2 moved the
+     ContextMeter out of this lane into the dock row under the card (next to
+     the TPS stats pills) — on rc.2 NONE of the trailing-lane meter rules in
+     this section match any more, and the trigger is back to its official
+     ~22px-tall box. They stay for the 0.1.5/0.1.6 generations where the
+     meter really rendered in the lane (structural anchors, inert elsewhere);
+     the rc.2+ hit-area repair lives in the dock-row section below. */
   [data-phase] [class*="_card"]:has(textarea, [data-composer-input]) [class*="_row"]:has([class*="_trailing"]) > [class*="_trailing"] > [class*="_root"] {
     flex: none;
     min-width: 0;
@@ -699,6 +715,37 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
   }
   [data-phase] [class*="_card"]:has(textarea, [data-composer-input]) [class*="_row"]:has([class*="_trailing"]) > [class*="_trailing"]:has([class*="_trigger"][aria-haspopup="menu"], > [class*="_root"] > [class*="_trigger"][aria-haspopup="dialog"]) > [class*="_primary"] {
     margin-left: 0;
+  }
+
+  /* --- ContextMeter hit area on 0.1.7-rc.2+ (issue #140) ---
+     The stats-line overlay parks the ring in the composer card's trailing
+     lane (right cluster next to the send key — a deliberate 2026-09-23
+     placement, kept per the reporter's confirmation at acceptance). The
+     official trigger is 16x20px, far under the touch minimum. Regrow the
+     hit area IN PLACE with a transparent ::after (the 📎 recipe).
+     2026-09-29 acceptance, final geometry (headless-measured): the ring
+     svg and its reserve are set to 18px (compat.css.ts — 16px was too
+     small to aim, 24px/20px too big, the reporter settled on 18px), the
+     width growth is absorbed by the lane's left slack so the key gaps
+     stay 6px/5px, and the hit box is a SYMMETRIC 26x26 square
+     (inset -4px) keeping the generous touch area around the smaller
+     ring — 2px/1px clearance to the model and send keys. The track is
+     deepened to 25% black (compat.css.ts) so the donut reads as a
+     meter, not a spinner.
+     Knobs: the svg/reserve size (compat.css.ts) and this inset; the box
+     must stay a square hugging the ring, its edges clamped by the two
+     neighbouring keys. The dock container owns only this one dialog
+     trigger (the TPS stats pills render plain text), so a scoped
+     aria-haspopup="dialog" anchor cannot cross-match anything; the DOM
+     ancestry (ring inside the dock container) is unchanged by the
+     overlay's absolute positioning. */
+  [data-phase] [class*="_dock"] [class*="_trigger"][aria-haspopup="dialog"] {
+    position: relative;
+  }
+  [data-phase] [class*="_dock"] [class*="_trigger"][aria-haspopup="dialog"]::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
   }
 
   /* --- Third-party model seats (issue #60: @hytime/dsh-thinking-effort) ---
@@ -2493,6 +2540,32 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
      只作用于抽屉里的会话行，搜索行（searchResultRow）不受影响。 */
   [data-mobile-nav="frame"] [class*="sessionRow"] [class*="_rowActions"] {
     display: inline-flex !important;
+  }
+
+  /* ---------- 提问卡（ask-user）头部按钮热区（issue #140） ----------
+     宿主 dsh-client-ui-user-questions 的 QuestionComposer 头部两颗图标按钮
+     ——「收起问题卡片」与「放弃整组问题」——官方 24×24px、headerActions
+     gap 4px，远低于触控下限；「放弃」紧贴「收起」（放弃 = pending.cancel()
+     后 actions.clear，整组草稿不可恢复地清空，宿主无确认），单手误触即丢
+     内容。手机档原地放大命中盒（::after 透明扩展，墨迹与版式零变化），
+     同时拉开两颗按钮的节距：24px 按钮 + 12px gap + ±4px 扩展 = 32px 命中
+     盒、命中盒之间净空 4px——扩展幅度若超过节距的一半，两颗命中盒会互相
+     重叠，反而制造新的误触，这是本组数值的硬约束。
+     作用域：头部动作区专用（_headerActions 后代），翻页器的 prev/next 也
+     是同族 iconButton，但节距只有 6px，吃不下 ±4px 扩展，不掺和。哈希族
+     Mbwy4a_ 是该包 QuestionComposer.module.css 的稳定前缀，哈希变更时整组
+     规则自动失效，不误伤别家（哈希子串锚，非后缀锚，见 pitfalls「哈希子
+     串」）。 */
+  [class*="Mbwy4a_headerActions"] {
+    gap: 12px !important;
+  }
+  [class*="Mbwy4a_iconButton"] {
+    position: relative;
+  }
+  [class*="Mbwy4a_headerActions"] [class*="Mbwy4a_iconButton"]::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
   }
 }
 `

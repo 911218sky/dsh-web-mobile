@@ -712,9 +712,19 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
   [data-mobile-nav="stats-ring"] svg {
     display: inline-block !important;
-    width: 16px !important;
-    height: 16px !important;
+    /* 2026-09-29 验收定稿（issue #140）：16px 难瞄准、24px 过大、20px 仍偏大，
+       店主拍板 18px；与 26×26 命中盒（见 layout.css.ts 的环规则）匹配。
+       增宽由尾道左侧富余吸收，按键间距不变。 */
+    width: 18px !important;
+    height: 18px !important;
     flex: 0 0 auto !important;
+  }
+  /* 轨道深化（2026-09-29 验收，issue #140）：宿主轨道只有 12% 黑，环放大到
+     24px 后深灰进度弧显得像残缺的加载圈（店主「什么玩意儿」）。加深到 25%
+     让 donut 成完整圆环——是「用量表」不是「spinner」。子串锚 class*=_track
+     与仓库哈希锚惯例一致，环标记内不会跨匹配（fill 类名不同）。 */
+  [data-mobile-nav="stats-ring"] [class*="_track"] {
+    stroke: rgba(0, 0, 0, 0.25) !important;
   }
   /* 环与 TPS 读数不再搬动宿主 React 节点（#104：搬动后宿主卸载调 removeChild
      对不上父节点直接抛 NotFoundError，SlotErrorBoundary 把整个 composer 槽位
@@ -728,8 +738,10 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   [data-mobile-nav="stats-ring-reserve"] {
     flex: 0 0 auto !important;
     display: inline-block !important;
-    width: 16px !important;
-    height: 16px !important;
+    /* 18px 与定稿的环（上方 svg 规则）同尺寸：占位顶住的槽位即环的落点，
+       尾道左侧富余吸收增宽，按键间距不变。 */
+    width: 18px !important;
+    height: 18px !important;
     margin: 0 2px 0 0 !important;
     padding: 0 !important;
   }

@@ -23,9 +23,9 @@
   │     ├─ debug.ts          ← ?mobile-nav-debug=1 诊断徽章
   │     ├─ components/       ← MobileNavToggle / MobileDrawerFooter / ComposerFileButton / open-files-panel.ts
   │     ├─ core/             ← reconciler-core.ts（零 import）+ raf-scheduler.ts · css-rules.ts · sessions-compat.ts · layout-compat.ts · icon-compat.ts（宿主图标跨代命名兼容）
-  │     ├─ effects/          ← 18 个效果模块：phone-chrome · sidebar-swipe ·
+  │     ├─ effects/          ← 19 个效果模块：phone-chrome · sidebar-swipe ·
   │     │                       gesture-guard · subagent-chip-touch · composer-keyboard-guard ·
-  │     │                       shortcut-modal-keyboard-guard ·
+  │     │                       shortcut-modal-keyboard-guard · session-focus-guard ·
   │     │                       composer-plus-toggle · workspace-chip-toggle · team-chip-toggle ·
   │     │                       model-menu-anchor ·
   │     │                       file-viewer-compat · aionui-compat · stats-line ·
@@ -41,7 +41,7 @@
   │  ├─ cdp-swipe-probe/failures · cdp-zoom-probe · cdp-compat-contracts (.mjs)
   │  ├─ css-structure-check.mjs ← CSS 结构检测器（已接入 test:core）
   │  └─ probes/              ← 22 个回归锚点（builtin-only，可单跑）
-  ├─ tests/                  ← 34 个 .test.ts（node --test，type-stripping 直跑）
+  ├─ tests/                  ← 35 个 .test.ts（node --test，type-stripping 直跑）
   ├─ docs/
   │  ├─ specs/               ← 8 篇权威设计文档（入库）
   │  ├─ audits/ · maintenance/pitfalls.md · upstream/（runbook + compat-contracts.json + host-jank-feedback.md）· fork-wzxmt-zhc/
@@ -57,7 +57,7 @@
 
 - 排查设置/插件市场区布局与弹层 → `docs/debug/settings-market-debug-map.md`（DOM 层级/哈希归属/干预点索引/CDP SOP；§8=0.1.7-rc.1 复测、§9=rc.2 portal 换锚对照）
 - 排查 composer/输入区 → `docs/debug/composer-tree-recon.md`（composer 子树考古；QA 会话种子配方同源）
-- 动手改某块代码前 → `docs/maintenance/pitfalls.md`（58 坑原文，名字=锚点，索引在下方 Pitfalls 节）
+- 动手改某块代码前 → `docs/maintenance/pitfalls.md`（59 坑原文，名字=锚点，索引在下方 Pitfalls 节）
 - 改手势/面板退出等行为契约 → `docs/specs/`（8 篇权威 spec；手势参数与状态机在 2026-08-27-sidebar-swipe-gestures.md，不可破）
 - 宿主升级前 → `docs/upstream/upgrade-runbook.md`（对账清单与验收电池）+ `node scripts/cdp-compat-contracts.mjs`（机读契约自动对账，无需 SESSION_ID）
 - 评估宿主代际兼容面 → `docs/upstream/2026-09-23-dsh-0.1.7-alpha.2-compat-audit.md`（28 条对账 0 改的先例与方法）；升 0.1.6-alpha.2 系前必读 `docs/upstream/2026-09-19-dsh-0.1.6-alpha.2-compat-audit.md` §10（升级前必修 3 项 + 电池 15 项）
@@ -142,6 +142,13 @@ dsh web
     键盘不起；点击不受影响（浏览器原生聚焦不经过 JS 方法），搜一次仍是一次点按。影子在
     MutationObserver（只盯 `document.body` 的 childList）里安装 —— 微任务早于 React 的被动 effect，
     所以第一帧抢焦也拦得住；弹层移除时 `delete` 还原。
+  - `session-focus-guard.ts` — 手机档：进入会话不自动弹软键盘（issue #140）。宿主 InputBar 在
+    每次切会话时程序化聚焦编辑器；本效果订阅 `ctx.sessions.list` 快照、仅在当前会话 id 变化时开
+    一个 800ms 影子窗口（复用 `composer-keyboard-guard.ts` 的 own no-op focus 影子与标记），
+    窗口内 MutationObserver 微任务给新挂载的 `[data-composer-input]` 装影子；宿主聚焦实测跑在
+    commit 同步相（早于微任务，headless t=314ms 无影子焦点实锤），窗口期另有 focusin 捕获
+    **同步 blur** 兜底（composer guard 2026-09-23 同型）；用户点输入框当场解除窗口，原生点按
+    永远不受影响。
   - Reconciler task modules: `preview-fullscreen.ts`, `overlay-backdrop-fab.ts`, `panel-exit.ts`.
 - Styles: `src/client/styles/index.ts` concatenates `base → layout → compat → misc` in that load-bearing order and injects one `<style data-plugin>` tag. Mobile rules target `(max-width: 1023px) and (pointer: coarse)` (keep every top-level media block in sync with `MOBILE_QUERY`); the desktop hide block in misc.css.ts is its exact complement and must preserve the uninstalled layout.
 - Third-party compatibility is implemented through scoped DOM markers, stable `data-*` attributes, `MutationObserver`, and carefully scoped class/text anchors. Never modify third-party source packages.
@@ -157,7 +164,9 @@ dsh web
 - **Bug 定位先报告、确认后再修（用户要求，2026-09-19）**：需要跟踪定位的 bug——多步调查、根因不明、现象与成因相距远的那种——定位到根因后**不要立刻动手修**，先给出清晰报告：症状、根因、证据链、影响范围、拟议修复（有取舍时列选项），等用户确认再执行。一眼即明的简单修复不在此列。
 - **用户协作偏好自动入库（用户要求，2026-09-19）**：用户在对话中提出的协作偏好/工作流要求（如上一条这类），**当场写进本文件对应节**，不必等用户点名「写进 AGENTS.md」；入库后在回复里提一句写到了哪里。记忆只做跨会话备份，不能替代本文件。
 - **宿主升级必须用户单独确认（用户要求，2026-09-19）**：默认只做源码/静态对账，**不动宿主**；alpha 通道一律不上机（隐藏 bug 风险 + 会话格式迁移不可逆）。真要升级先备份 `~/.dsh/sessions`，升级后按 runbook 电池验收。
-- **发版动作必须用户单独同意（用户要求，2026-09-25）**：版本 bump + tag + npm publish + GitHub Release 属对外发布动作，收口闭环走到发版步时**停下来等用户点头**再执行；代码修复/commit/PR/merge 不在此列。
+- **发版动作必须用户单独同意（用户要求，2026-09-25）**：版本 bump + tag + npm publish + GitHub Release 属对外发布动作，收口闭环走到发版步时**停下来等用户点头**再执行。
+- **push + PR + merge 必须用户批准（用户要求，2026-09-27，覆盖旧口径）**：本地 commit 可自主（工作区可逆），但 **push 远端、开 PR、merge 一律先报用户等点头**——用户原话「没我批准你不许直接发PR」；网络重试自动合并的后台循环同样禁止。
+- **公开 PR/issue 文本卫生（用户要求，2026-09-30）**：私聊里的验收口语、内部对话引用（如原话引语）、自封的验收者头衔**一律不进** PR 正文/issue 回复等公开文本——公开文字只写事实（改了什么、为何这样改、门验结果）；验收状态用一句中性的「已在真机验证」即可，不贴内部原话。
 - **审查规模与改动成正比（用户要求，2026-09-19）**：PR/改动审查默认**自己一遍过**（CI 状态 + 静态对账 + 抽读核心 diff），不为流程排场派多代理；只有真大范围改动（跨多模块 / 数百行 diff / 触碰手势与宿主契约）才考虑拆专项，且派前先问用户。**团队在场时例外（用户要求，2026-09-23）**：已拉起成员（chief-checker / content-retriever 等）时，检查、取证、复查类工作直接 send_message 派给成员完成，lead 不再亲自重做；成员报告仍按 lead 终审铁律亲验关键证据。
 - **团队岗位分离 SOP（用户要求，2026-09-19）**：多代理协作按三岗走——**实施岗**唯一写代码（接规格令→落码→自检→报告，不跑浏览器）；**验收岗（QA）**唯一接收 bug 与执行测试（browser-review 技能清单 + 探针电池 + 标准报告，不写代码）；**lead** 分诊/拍板/三门+build/对用户。每件 bug 固定回路：报告→定位令→落码→门验→QA 标准报告→PASS 收口 / FAIL 回炉（修复轮 ≤3 记台账）→用户验收。端侧资源纪律：headless chromium 先批后跑、单实例、合并多场景采集、跑完即杀（2026-09-19 OOM 实锤）。
 - **lead 终审铁律（2026-09-19 深查事故后补）**：合并/提交前 lead 全量亲验，禁止只看报告数字：①diff 的**删除行必读**（grep 过滤 `+` 行会漏掉 context 里被删的承载代码，实测造出过伪证）；②QA/子代理的**证据文件必亲读**（报告可能漏报自身缺陷，实测探针结尾崩溃未披露）；③「零残留/exit 0」类自证声明要有脚本外旁证；④报告与证据文件不一致处必须声明（报告纪律）。
@@ -182,7 +191,7 @@ dsh web
 
 ## Pitfalls
 
-- **58 个坑的索引：名字 = 触发词 = 锚点**。每条原文在 `docs/maintenance/pitfalls.md` 末尾「2026-09-18 迁入原文」节，锚点 `### <名字>`，顺序与下面一一对应。**动手改某块代码前，先按名字读对应条目**——里面是踩过的坑、最硬铁律、实测数据、探针断言与被否决方案；不看就改等于重踩。
+- **59 个坑的索引：名字 = 触发词 = 锚点**。每条原文在 `docs/maintenance/pitfalls.md` 末尾「2026-09-18 迁入原文」节，锚点 `### <名字>`，顺序与下面一一对应。**动手改某块代码前，先按名字读对应条目**——里面是踩过的坑、最硬铁律、实测数据、探针断言与被否决方案；不看就改等于重踩。
 - 本文件只放名字，正文一律进 `docs/`（见 Maintenance「体积门槛」）：新增坑位 = 名字加进下面清单 + 原文写进该档并补 `### 同名` 锚点。
 
 - `手势层`
@@ -243,10 +252,11 @@ dsh web
 - `全屏侧边栏面板带`
 - `搬宿主 React 节点`
 - `弹层闪`
+- `ContextMeter 挪位`
 
 ## Testing & QA
 
-- Automated gates: `pnpm verify` (typecheck) and `pnpm test:core`（34 个测试文件，glob 覆盖 `tests/` 全部）. `pnpm build` additionally exercises the custom client bundler. Use `git diff --check` for whitespace hygiene.
+- Automated gates: `pnpm verify` (typecheck) and `pnpm test:core`（35 个测试文件，glob 覆盖 `tests/` 全部）. `pnpm build` additionally exercises the custom client bundler. Use `git diff --check` for whitespace hygiene.
 - There is no linter, formatter, or coverage setup; the CI workflow (`.github/workflows/ci.yml`) additionally runs the lib freshness gate `git diff --exit-code lib`.
 - After source/layout changes, install the linked plugin in a real DSH Web profile, restart `dsh web`, and check both sides of the breakpoint:
   - **Narrow phone (~390px):** rail hidden; drawer/FAB/backdrop open and close; Escape; session-row action menus do not close the drawer; settings remains usable; Files opens explorer/preview sheets; session-log/footer actions work; preview fullscreen opens and resets.
