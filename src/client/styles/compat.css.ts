@@ -720,6 +720,13 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     height: 24px !important;
     flex: 0 0 auto !important;
   }
+  /* 轨道深化（2026-09-29 验收，issue #140）：宿主轨道只有 12% 黑，环放大到
+     24px 后深灰进度弧显得像残缺的加载圈（店主「什么玩意儿」）。加深到 25%
+     让 donut 成完整圆环——是「用量表」不是「spinner」。子串锚 class*=_track
+     与仓库哈希锚惯例一致，环标记内不会跨匹配（fill 类名不同）。 */
+  [data-mobile-nav="stats-ring"] [class*="_track"] {
+    stroke: rgba(0, 0, 0, 0.25) !important;
+  }
   /* 环与 TPS 读数不再搬动宿主 React 节点（#104：搬动后宿主卸载调 removeChild
      对不上父节点直接抛 NotFoundError，SlotErrorBoundary 把整个 composer 槽位
      清空）。节点留在 React 渲染的原位，可见槽位由插件自建占位顶住，宿主节点
