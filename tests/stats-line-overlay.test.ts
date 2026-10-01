@@ -52,8 +52,18 @@ test('the enlarged ring keeps a visible track (issue #140 spinner look)', () => 
   // 2026-09-29 acceptance: the ring svg was enlarged 16 -> 24px, and the
   // host track (12% black) became invisible next to the thick fill arc —
   // the meter read as a broken loading spinner. The track must be
-  // deepened so the donut is a complete ring.
-  assert.match(css, /\[data-mobile-nav="stats-ring"\]\s*\[class\*="_track"\]\s*\{[^}]*stroke:\s*rgba\(0,\s*0,\s*0,\s*0\.25\)/)
+  // deepened so the donut is a complete ring. Issue #142: the deepened
+  // track must follow the theme — 25% of the label token via color-mix
+  // (label-primary is near-black light, near-white dark); a literal 25%
+  // black vanishes on the dark theme and the spinner look returns there.
+  assert.match(
+    css,
+    /\[data-mobile-nav="stats-ring"\]\s*\[class\*="_track"\]\s*\{[^}]*stroke:\s*color-mix\(in srgb,\s*var\(--dsw-alias-label-primary,\s*#000\)\s*25%,\s*transparent\)/,
+  )
+  // The theme-blind literal must not come back on the track rule.
+  const trackRule = css.match(/\[data-mobile-nav="stats-ring"\]\s*\[class\*="_track"\]\s*\{[^}]*\}/)
+  assert.ok(trackRule, 'track rule exists')
+  assert.doesNotMatch(trackRule[0], /rgba\(0,\s*0,\s*0,\s*0?\.25\)/)
 })
 
 test('dispose hands the official layout back', () => {
