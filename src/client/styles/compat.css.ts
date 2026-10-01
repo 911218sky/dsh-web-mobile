@@ -722,9 +722,14 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   /* 轨道深化（2026-09-29 验收，issue #140）：宿主轨道只有 12% 黑，环放大到
      24px 后深灰进度弧显得像残缺的加载圈（店主「什么玩意儿」）。加深到 25%
      让 donut 成完整圆环——是「用量表」不是「spinner」。子串锚 class*=_track
-     与仓库哈希锚惯例一致，环标记内不会跨匹配（fill 类名不同）。 */
+     与仓库哈希锚惯例一致，环标记内不会跨匹配（fill 类名不同）。
+     #142：25% 黑改按主题取色——color-mix 取 25% 标签色（label-primary 浅色
+     =近黑、暗色=近白），浅色维持 #140 验收观感，暗色自动翻成 25% 白（裸
+     rgba(0,0,0,.25) 在暗色下不可见，环又退回残缺加载圈）；token 缺失时 var
+     兜底 #000 与原值等价。border 族没有 25% 等价档，纯 var 兜底会让浅色回
+     归宿主 12%，故用 color-mix；宿主 CSS 已用同款 color-mix+var 组合。 */
   [data-mobile-nav="stats-ring"] [class*="_track"] {
-    stroke: rgba(0, 0, 0, 0.25) !important;
+    stroke: color-mix(in srgb, var(--dsw-alias-label-primary, #000) 25%, transparent) !important;
   }
   /* 环与 TPS 读数不再搬动宿主 React 节点（#104：搬动后宿主卸载调 removeChild
      对不上父节点直接抛 NotFoundError，SlotErrorBoundary 把整个 composer 槽位
