@@ -10,6 +10,7 @@ import { installSidebarSwipe } from './effects/sidebar-swipe.ts'
 import { installSubagentChipTouch } from './effects/subagent-chip-touch.ts'
 import { installSessionMenuDelete } from './effects/session-menu.ts'
 import { installComposerKeyboardGuard } from './effects/composer-keyboard-guard.ts'
+import { installComposerKeyboardLift } from './effects/composer-keyboard-lift.ts'
 import { installComposerPlusToggle } from './effects/composer-plus-toggle.ts'
 import { installWorkspaceChipToggle } from './effects/workspace-chip-toggle.ts'
 import { installTeamChipToggle } from './effects/team-chip-toggle.ts'
@@ -224,6 +225,9 @@ export function apply(ctx: ClientContext): void {
   // iOS: tapping the composer's send/stop/+ buttons must not re-raise the
   // dismissed keyboard (upstream keepFocus focuses the editor on mousedown).
   installComposerKeyboardGuard(ctx)
+  // iOS: the host Lexical scroll helper mis-scrolls the window on every
+  // keystroke (issue #149); pin the composer seat above the keyboard.
+  installComposerKeyboardLift(ctx)
   installComposerPlusToggle(ctx)
   // Hero workspace chip: the host's picker portaled its Menu with
   // `anchor={null}`, so its own outside-pointerdown close eats the trigger's
