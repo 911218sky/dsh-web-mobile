@@ -23,8 +23,9 @@
   │     ├─ debug.ts          ← ?mobile-nav-debug=1 诊断徽章
   │     ├─ components/       ← MobileNavToggle / MobileDrawerFooter / ComposerFileButton / open-files-panel.ts
   │     ├─ core/             ← reconciler-core.ts（零 import）+ raf-scheduler.ts · css-rules.ts · sessions-compat.ts · layout-compat.ts · icon-compat.ts（宿主图标跨代命名兼容）
-  │     ├─ effects/          ← 19 个效果模块：phone-chrome · sidebar-swipe ·
+  │     ├─ effects/          ← 20 个效果模块：phone-chrome · sidebar-swipe ·
   │     │                       gesture-guard · subagent-chip-touch · composer-keyboard-guard ·
+  │     │                       composer-keyboard-lift ·
   │     │                       shortcut-modal-keyboard-guard · session-focus-guard ·
   │     │                       composer-plus-toggle · workspace-chip-toggle · team-chip-toggle ·
   │     │                       model-menu-anchor ·
@@ -41,7 +42,7 @@
   │  ├─ cdp-swipe-probe/failures · cdp-zoom-probe · cdp-compat-contracts (.mjs)
   │  ├─ css-structure-check.mjs ← CSS 结构检测器（已接入 test:core）
   │  └─ probes/              ← 22 个回归锚点（builtin-only，可单跑）
-  ├─ tests/                  ← 35 个 .test.ts（node --test，type-stripping 直跑）
+  ├─ tests/                  ← 36 个 .test.ts（node --test，type-stripping 直跑）
   ├─ docs/
   │  ├─ specs/               ← 8 篇权威设计文档（入库）
   │  ├─ audits/ · maintenance/pitfalls.md · upstream/（runbook + compat-contracts.json + host-jank-feedback.md）· fork-wzxmt-zhc/
@@ -124,6 +125,7 @@ dsh web
   - `debug.ts` — opt-in `?mobile-nav-debug=1` live diagnostic badge (no-op without the query param).
   - `subagent-chip-touch.ts` — touch compatibility for the subagent count chip and touch nav-arm close (see Pitfalls).
   - `composer-keyboard-guard.ts` — iOS-only: tapping the composer's send/stop/+ buttons must not re-raise a dismissed keyboard (upstream `keepFocus` focuses the editor on `mousedown`, PR #48; DOM-contract notes in the file header).
+  - `composer-keyboard-lift.ts` — iOS-only（#149）：宿主 Lexical 选区滚动助手把布局坐标可视带和视口坐标 caret rect 比对，iOS 键盘的非零窗口滚动让它每次击键误发 `window.scrollBy`，composer 整块沉进系统辅助条。本效果在编辑器持焦期间用 screen-space-only 的 `translateY(−overlap)`（seat rect.bottom vs `vv.height`）把 seat 钉回键盘顶；pinch 或双通道分歧时 fail-open；纯核 `computeComposerLift` 由测试钉死。
   - `workspace-chip-toggle.ts` — hero 工作区 chip 的「再点关闭」：宿主把选择器菜单开成
     `<Menu anchor={null} portal>`，触发器在 Menu 子树外，于是它的「外部 pointerdown 关闭」
     把 chip 自己的第二击也吃掉；本效果只吞那一击 click，让宿主的关闭成为唯一结果
@@ -259,7 +261,7 @@ dsh web
 
 ## Testing & QA
 
-- Automated gates: `pnpm verify` (typecheck) and `pnpm test:core`（35 个测试文件，glob 覆盖 `tests/` 全部）. `pnpm build` additionally exercises the custom client bundler. Use `git diff --check` for whitespace hygiene.
+- Automated gates: `pnpm verify` (typecheck) and `pnpm test:core`（36 个测试文件，glob 覆盖 `tests/` 全部）. `pnpm build` additionally exercises the custom client bundler. Use `git diff --check` for whitespace hygiene.
 - There is no linter, formatter, or coverage setup; the CI workflow (`.github/workflows/ci.yml`) additionally runs the lib freshness gate `git diff --exit-code lib`.
 - After source/layout changes, install the linked plugin in a real DSH Web profile, restart `dsh web`, and check both sides of the breakpoint:
   - **Narrow phone (~390px):** rail hidden; drawer/FAB/backdrop open and close; Escape; session-row action menus do not close the drawer; settings remains usable; Files opens explorer/preview sheets; session-log/footer actions work; preview fullscreen opens and resets.
