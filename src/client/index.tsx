@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from './client-context.ts'
 import { MobileNavToggle } from './components/MobileNavToggle.tsx'
 import { MobileDrawerFooter } from './components/MobileDrawerFooter.tsx'
 import { ComposerFileButton } from './components/ComposerFileButton.tsx'
@@ -308,13 +308,3 @@ export function apply(ctx: ClientContext): void {
     inject: () => ({}),
   }, ComposerFileButton))
 }
-
-// Type-only augmentation imports: pull the layout / conversation / sidebar /
-// settings SlotMap merges and the sessionLogDownload service typing into this
-// program without any runtime import.
-import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type {} from '@deepseek-ai/dsh-session-log-export/client'

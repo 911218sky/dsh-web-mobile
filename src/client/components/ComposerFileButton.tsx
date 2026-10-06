@@ -1,5 +1,7 @@
 import type { MouseEvent } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import { IconPaperclip } from '../core/icon-compat.ts'
 import { NS } from '../i18n/locales.ts'
 

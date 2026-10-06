@@ -25,7 +25,7 @@
  * names (`dsh-web-mobile-*`; the fork's originals referenced the pre-rename
  * `dsh-mobile-nav-*` names, which silently no-op).
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '../client-context.ts'
 import { MOBILE_QUERY, TOUCH_QUERY, installMobileEffect, toggleDrawer } from './phone-chrome.ts'
 import { currentSessionIdOf, sessionById, sessionsCanClear } from '../core/sessions-compat.ts'
 
@@ -87,7 +87,8 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
     // lazily so a later-registered dictionary is picked up; the general
     // overload accepts the raw namespace id.
     const wsT = (key: string, params?: Record<string, unknown>): string =>
-      ctx.locale.bind(WORKSPACE_NS)(key, params)
+      // Host dictionaries vary by generation; keep signature detection resilient.
+      (ctx.locale.bind(WORKSPACE_NS) as (k: string, p?: Record<string, unknown>) => string)(key, params)
 
     let anchor: MenuAnchor | null = null
     let injectRaf = 0
@@ -268,7 +269,9 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
           return
         }
         closeDialog()
-        if (wasCurrent && sessionsCanClear(ctx.sessions)) ctx.sessions.clear()
+        if (wasCurrent && sessionsCanClear(ctx.sessions)) {
+          ;(ctx.sessions as unknown as { clear: () => void }).clear()
+        }
         // Repull the baseline so the deleted row disappears. Must be called AS
         // A METHOD on ctx.sessions: refresh() reads `this.manager`, and an
         // extracted reference would throw "this is undefined" — the failure

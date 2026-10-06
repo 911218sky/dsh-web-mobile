@@ -3,7 +3,7 @@
 ## Project
 
 - **Fork**：[`911218sky/dsh-web-mobile`](https://github.com/911218sky/dsh-web-mobile)（上游 [`mexiaosqwq/dsh-web-mobile`](https://github.com/mexiaosqwq/dsh-web-mobile)）。
-- **目标版本**：DSH **0.2.0-rc.1 / rc.2**（0.1.x 多数仍可用）+ `tsdown`；**不**维护 aionui / dsh-file-viewer / dsh-web-all 专用适配。对外说明以 [README.md](README.md) 为准。
+- **目标版本**：DSH **`>=0.2.0-0 <0.3.0`**（0.2.x 线，含 rc）+ `tsdown`；**不**维护 aionui / dsh-file-viewer / dsh-web-all 专用适配。对外说明以 [README.md](README.md) 为准。
 - 激活条件：`MOBILE_QUERY = '(max-width: 1023px) and (pointer: coarse)'`（`phone-chrome.ts`）。鼠标桌面任意宽度 no-op；会话删除例外走 `TOUCH_QUERY = '(pointer: coarse)'`（含宽屏平板）。
 - 包名 / patch id = `dsh-web-mobile`；DOM 仍用 `data-mobile-nav` / `?mobile-nav-debug=1`（旧词根刻意保留）。
 - 入口：
@@ -62,7 +62,7 @@ dsh web
 DSH_PROBE_SESSION_ID=<id> pnpm smoke:cdp
 node scripts/cdp-swipe-probe.mjs
 node scripts/cdp-zoom-probe.mjs
-node scripts/cdp-compat-contracts.mjs
+pnpm smoke:compat
 ```
 
 ## Architecture

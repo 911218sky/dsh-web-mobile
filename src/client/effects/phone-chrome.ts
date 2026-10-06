@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '../client-context.ts'
 import { consumeIfGestured, isStrokeLocked } from './gesture-guard.ts'
 import { findSessionIdInFiber, isTapWithinSlop, reactFiberOf } from './session-row-fiber.ts'
 import { createReconcilerCore } from '../core/reconciler-core.ts'

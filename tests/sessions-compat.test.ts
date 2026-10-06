@@ -56,7 +56,11 @@ test('all four current reads go through currentSessionIdOf', () => {
 })
 
 test('clear and open are feature-detected, not assumed', () => {
-  assert.match(MENU, /if \(wasCurrent && sessionsCanClear\(ctx\.sessions\)\) ctx\.sessions\.clear\(\)/)
+  // 0.2 typings may omit clear(); feature-detect then cast before calling.
+  assert.match(
+    MENU,
+    /if \(wasCurrent && sessionsCanClear\(ctx\.sessions\)\) \{\s*;?\(ctx\.sessions as unknown as \{ clear: \(\) => void \}\)\.clear\(\)/,
+  )
   assert.match(CHROME, /sessionsCanOpen\(ctx\.sessions\)/)
   // a2 degrade: no open() -> the DOM-observer closer takes the tap, and the
   // store-subscription closer (which has no signal on a2) must NOT be armed.

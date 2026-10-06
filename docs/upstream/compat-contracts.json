@@ -238,6 +238,48 @@
       "lazy": true,
       "state": "Agent Teams 会话在场时复扫",
       "note": "团队 chip root；pin order:2/max-width:156/min-width:44 与可缩断言锚（task-3 T1b，2026-09-19）"
+    },
+    {
+      "id": "sidebar-toggle-hash",
+      "kind": "hash",
+      "needle": "hHd-Xa_",
+      "owner": "dsh-web-frontend",
+      "lazy": false,
+      "note": "layout.css.ts frame toggle；与 aria-label* sidebar 结构选择器并用"
+    },
+    {
+      "id": "permission-trigger-hash",
+      "kind": "hash",
+      "needle": "iWlSmW_",
+      "owner": "dsh-client-ui-permission-presets",
+      "lazy": false,
+      "note": "权限触发器 _trigger/_triggerIcon"
+    },
+    {
+      "id": "model-selection-hash",
+      "kind": "hash",
+      "needle": "_7KE1Ra_",
+      "owner": "dsh-client-ui-model-selection",
+      "lazy": false,
+      "note": "model-selection trigger/chevron/menu；包不在则规则自然失效"
+    },
+    {
+      "id": "jobs-chip-hash",
+      "kind": "hash",
+      "needle": "QsffPG_",
+      "owner": "dsh-client-ui-jobs",
+      "lazy": true,
+      "state": "后台任务 chip 在场时复扫",
+      "note": "header QsffPG_root 任务 chip"
+    },
+    {
+      "id": "stats-row-hash",
+      "kind": "hash",
+      "needle": "usg_",
+      "owner": "dsh-client-ui-conversation",
+      "lazy": true,
+      "state": "stats 行在场时复扫",
+      "note": "compat.css.ts usg_ statsRow/stat"
     }
   ]
 }

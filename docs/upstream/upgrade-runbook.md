@@ -26,8 +26,8 @@ CSS module 哈希是包版本的函数；下列前缀是本插件选择器/探�
 
 本表已有机读版与自动对账探针（2026-09-18 复跑：`total=26 hit=17 skip=4 miss=5 green=no`，exit 1）：
 
-- 数据：`docs/upstream/compat-contracts.json`（28 条，其中 11 条 `lazy`＝状态门控/懒加载条目）
-- 执行：`node scripts/cdp-compat-contracts.mjs`（无需 `DSH_PROBE_SESSION_ID`，非 lazy 的 MISS 才 exit 1；SKIP/MISS 条目按其 `state` 提示手动复扫）
+- 数据：`docs/upstream/compat-contracts.json`（含 layout/compat 硬哈希针 + marker；宿主升级后以 CDP 对账为准）
+- 执行：`pnpm smoke:compat`（= `node scripts/cdp-compat-contracts.mjs`；无需 `DSH_PROBE_SESSION_ID`，非 lazy 的 MISS 才 exit 1；SKIP/MISS 条目按其 `state` 提示手动复扫）
 **2026-09-18 现状：`total=26 hit=20 skip=6 miss=0 green=yes`（exit 0）。**
 **2026-09-23：0.1.7-alpha.2 静态对账见 `2026-09-23-dsh-0.1.7-alpha.2-compat-audit.md`** —— 28 条里 16 条两版逐字一致、8 条状态/运行时门控、3 条属第三方 dsh-web-all、1 条死哈希已改结构化 marker；**插件代码 0 处需要改**。
 
@@ -72,7 +72,7 @@ pnpm verify && pnpm test:core && pnpm build && git diff --exit-code lib
 export TMPDIR=$HOME/tmp XDG_RUNTIME_DIR=$HOME/tmp
 export DSH_PROBE_URL=http://127.0.0.1:3080/
 export DSH_PROBE_CHROME=chromium-browser   # 2026-09-18 实测可 spawn；异常时直指真实 ELF /data/data/com.termux/files/usr/lib/chromium/chrome
-node scripts/cdp-compat-contracts.mjs          # 契约对账（无需 SESSION_ID）；miss=0 才算过，SKIP 按提示手动复扫
+node scripts/cdp-compat-contracts.mjs          # 或 pnpm smoke:compat；契约对账（无需 SESSION_ID）；miss=0 才算过，SKIP 按提示手动复扫
 DSH_PROBE_SESSION_ID=<id> pnpm smoke:cdp      # SUMMARY new=0 才算过；BASELINE 见探针内 EXPECTED_FAILURES
 node scripts/cdp-swipe-failures.mjs           # 16 场景手势门
 node scripts/cdp-zoom-probe.mjs               # 23 断言 iOS/viewport 守卫

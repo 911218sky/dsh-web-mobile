@@ -12,6 +12,7 @@ import {
   openStateStartMode,
   selectionOwnsStroke,
   startZonePxFor,
+  clearFollowInlineStyles,
   type SwipeThresholds,
   type SwipeChainNode,
 } from '../src/client/effects/sidebar-swipe.ts'
@@ -669,4 +670,17 @@ test('openStateStartMode: the drawer body always owns its stroke', () => {
   assert.equal(openStateStartMode(true, false), 'drawer')
   assert.equal(openStateStartMode(false, true), 'files')
   assert.equal(openStateStartMode(false, false), 'drawer')
+})
+
+test('clearFollowInlineStyles: dispose clears important transform/transition', () => {
+  const removed: string[] = []
+  const el = {
+    style: {
+      removeProperty(name: string) {
+        removed.push(name)
+      },
+    },
+  } as unknown as HTMLElement
+  clearFollowInlineStyles(el)
+  assert.deepEqual(removed, ['transition', 'transform'])
 })

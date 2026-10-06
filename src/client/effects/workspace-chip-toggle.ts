@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '../client-context.ts'
 import { installMobileEffect } from './phone-chrome.ts'
 
 /**

@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '../client-context.ts'
 import { installMobileEffect, getFrame } from './phone-chrome.ts'
 import { markGestureConsumed, consumeIfGestured, markStrokeLocked, clearStrokeLocked } from './gesture-guard.ts'
 import { fadeOverlayOut } from './overlay-backdrop-fab.ts'
@@ -891,6 +891,16 @@ function applyFollow(ctx: ClientContext, dx: number): void {
 }
 
 /**
+ * Clear gesture-owned inline transform/transition.
+ * Dispose and release paths must call this so a stuck drawer never keeps
+ * an `!important` transform after the effect tears down.
+ */
+export function clearFollowInlineStyles(el: HTMLElement): void {
+  el.style.removeProperty('transition')
+  el.style.removeProperty('transform')
+}
+
+/**
  * Drop the inline follow styles. The host stylesheet retakes control: with
  * the transition restored, clearing the transform animates the drawer from
  * the finger position to whatever the CURRENT host state says. Called on
@@ -898,11 +908,12 @@ function applyFollow(ctx: ClientContext, dx: number): void {
  * same-task retarget below overrides the initial leg before any paint).
  */
 function releaseFollowStyles(): void {
+  // Clear whenever a drawer is bound, even if followEngaged was lost — dispose
+  // must never leave an !important transform stuck after the effect tears down.
   const el = followDrawer
-  if (!followEngaged || el === null) return
   followEngaged = false
-  el.style.removeProperty('transition')
-  el.style.removeProperty('transform')
+  if (el === null) return
+  clearFollowInlineStyles(el)
 }
 
 /** A close commit that is still animating to the closed slot before the host
@@ -924,8 +935,7 @@ function finishPendingCommit(): void {
   window.clearTimeout(pending.timer)
   // The element may already be unmounted (React swaps the subtree at the
   // flip); stripping inline from a detached node is a harmless no-op.
-  pending.el.style.removeProperty('transition')
-  pending.el.style.removeProperty('transform')
+  clearFollowInlineStyles(pending.el)
   // If the host already closed while our animation ran (e.g. a genuine
   // backdrop tap inside the 280ms window), the flip already happened and a
   // blind toggle would RE-OPEN the drawer — skip it.

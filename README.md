@@ -8,7 +8,7 @@ DSH Web UI 的**手机端适配**：窄屏触控下把官方界面改成抽屉 /
 
 | 改动 | 说明 |
 | --- | --- |
-| 目标版本 | **DSH 0.2.0-rc.1 / rc.2**（0.1.x 多数仍可用） |
+| 目标版本 | **DSH `>=0.2.0-0 <0.3.0`**（0.2.x 线，含 rc） |
 | TypeScript + `tsdown` | 与其他自维护插件同一套构建，改源码后 `pnpm build` 即可 |
 | 第三方适配 | 不维护 aionui / dsh-file-viewer / dsh-web-all 专用补丁；需要完整适配请用上游包 |
 | 文档收口 | README 只留 fork 差异、能力与安装；发版细节放 GitHub Release |

@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '../client-context.ts'
 import type { ReconcilerTask } from '../core/reconciler-core.ts'
 import { panelSelectorOf } from '../core/layout-compat.ts'
 import { getFrame, installMobileEffect } from './phone-chrome.ts'
