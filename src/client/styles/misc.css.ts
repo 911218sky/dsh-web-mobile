@@ -123,20 +123,6 @@ export const MISC_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     font-size: 16px !important;
   }
 
-  /* ---------- dsh-file-viewer inputs: kill iOS Safari auto-zoom ----------
-     Same rule as the ask composer above: the file viewer's search / jump-to-
-     line / pdf-page fields ship at 13-14px, which Safari auto-magnifies on
-     focus inside a panel that does not blur on tap-away. Raise them to 16px
-     on iOS only for the same reason as the ask composer above (2026-09-16,
-     audit D-1 option A). Scoped to the frame marker; the
-     viewer itself is scoped by its stable dsfv prefix.
-     (Port of community fork fix 2ff7976.) */
-  html[data-mobile-nav-ios] [data-mobile-nav="frame"] [class*="dsfv-search-input"],
-  html[data-mobile-nav-ios] [data-mobile-nav="frame"] [class*="dsfv-jump-input"],
-  html[data-mobile-nav-ios] [data-mobile-nav="frame"] [class*="dsfv-page-input"] {
-    font-size: 16px !important;
-  }
-
   /* ---------- iOS WebKit: hold every text field at >=16px so Safari never
       focus-zooms the viewport (#45) ----------
       Report (iPhone 15 Pro Max): the page magnifies as soon as a field takes
@@ -208,7 +194,7 @@ export const MISC_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
    On wider but still sub-desktop viewports (foldables, tablet portrait,
    desktop-mode tall windows) the same full-bleed sheet leaves content
    clustered at the left edge with a large dead zone on the right. Cap and
-   center the modal sheets and the aionui bottom sheets instead. */
+   center the modal sheets instead. */
 @media (min-width: 768px) and (max-width: 1023px) and (pointer: coarse) {
   /* Centered, never edge-to-edge — for the modal shapes below, not for every
      modal dialog. Covered: modals that are not sheet-shaped, plus sheet-shaped
@@ -226,17 +212,6 @@ export const MISC_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     margin-right: auto !important;
     width: min(calc(100vw - 32px), 720px) !important;
     max-width: min(calc(100vw - 32px), 720px) !important;
-  }
-
-  /* The dsh-web-ui explorer / preview bottom sheets: same treatment — keep
-     the mobile bottom-sheet behavior, but stop them spanning the full width. */
-  [data-aionui-explorer-col],
-  [data-aionui-preview-col] {
-    left: 0 !important;
-    right: 0 !important;
-    width: min(calc(100vw - 32px), 720px) !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
   }
 
   /* Settings sections (e.g. Agent presets) often carry a desktop max-width
@@ -270,7 +245,6 @@ export const MISC_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   [data-mobile-nav="fab"],
   [data-mobile-nav="backdrop"],
   [data-mobile-nav="session-log"],
-  [data-mobile-nav="preview-full-toggle"],
   [data-mobile-nav="drawer-actions"] {
     display: none !important;
   }

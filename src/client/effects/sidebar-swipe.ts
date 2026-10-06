@@ -574,15 +574,11 @@ function modalOpen(): boolean {
 }
 
 /** True when a full-screen takeover (taskboard / ssh) owns the frame, or any
- *  host conversation.view overlay (trajectory tab, dsh-file-viewer, or a
- *  future third-party view — they all set the generic
- *  `data-conversation-composer-overlay` attribute on their root) is open.
- *  In both cases the drawer edge-swipe gestures yield so horizontal content
- *  scrolling (kanban columns, trajectory tables, CSV/code panes) wins the
- *  left-edge start zone; the FAB still opens the drawer. This reads the
- *  generic overlay attribute directly — deliberately decoupled from the
- *  file-viewer marker, which keys on `.dsfv-panel` only (design
- *  2026-09-06-conversation-overlay-takeover-design.md §4.2). */
+ *  host conversation.view overlay (trajectory tab or similar — they set the
+ *  generic `data-conversation-composer-overlay` attribute on their root) is
+ *  open. In both cases the drawer edge-swipe gestures yield so horizontal
+ *  content scrolling wins the left-edge start zone; the FAB still opens the
+ *  drawer. */
 function takeoverActive(): boolean {
   return (
     document.documentElement.hasAttribute('data-dsh-taskboard-active') ||

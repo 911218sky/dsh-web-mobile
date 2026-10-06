@@ -344,16 +344,4 @@ export const BASE_CSS = `
     transform: none;
   }
 }
-/* Preview sheet rise: the aionui preview column opens as a bottom sheet. */
-@keyframes dsh-web-mobile-sheet-up {
-  from {
-    opacity: 0;
-    transform: translateY(28px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
 `

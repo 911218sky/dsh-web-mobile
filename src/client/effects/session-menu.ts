@@ -27,7 +27,7 @@
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { MOBILE_QUERY, TOUCH_QUERY, installMobileEffect, toggleDrawer } from './phone-chrome.ts'
-import { currentSessionIdOf, sessionsCanClear } from '../core/sessions-compat.ts'
+import { currentSessionIdOf, sessionById, sessionsCanClear } from '../core/sessions-compat.ts'
 
 // Mirrored from src/client/locales.ts: the custom client bundler cannot
 // resolve `../` requires from effects/. Keep in sync.
@@ -98,9 +98,9 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
     const resolveSessionId = (row: HTMLElement, title: string): string | undefined => {
       const sessions = ctx.sessions.list.getSnapshot()
       const workspaces = ctx.workspaces.list.getSnapshot()
-      const archived = new Set(workspaces.archivedSessionIds)
-      const candidates = sessions.ids.filter((id: string) => {
-        const summary = sessions.byId[id]
+      const archived = new Set((workspaces.archivedSessionIds as readonly string[]))
+      const candidates = (sessions.ids as readonly string[]).filter((id) => {
+        const summary = sessionById(sessions, id)
         return summary !== undefined && !summary.blank && summary.displayTitle === title && !archived.has(id)
       })
       if (candidates.length === 1) return candidates[0]
@@ -112,15 +112,15 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
       const headerTitle = group
         .querySelector<HTMLElement>(':scope > [class*="_projectRow"] [class*="_title"]')
         ?.textContent?.trim()
-      const owned = new Set(workspaces.items.flatMap((workspace: { sessionIds: readonly string[] }) => workspace.sessionIds))
+      const owned = new Set(workspaces.items.flatMap((workspace: { sessionIds: readonly string[] }) => workspace.sessionIds as readonly string[]))
       const workspace = headerTitle === undefined
         ? undefined
         : workspaces.items.find((candidate: { title: string; sessionIds: readonly string[] }) => candidate.title === headerTitle)
-      const workspaceIds: readonly string[] = workspace === undefined ? [] : workspace.sessionIds
+      const workspaceIds: readonly string[] = workspace === undefined ? [] : (workspace.sessionIds as readonly string[])
       const groupIds: readonly string[] = workspace === undefined
-        ? sessions.ids.filter((id: string) => !owned.has(id) && !archived.has(id) && sessions.byId[id] !== undefined)
-        : workspaceIds.filter(id => !archived.has(id) && sessions.byId[id] !== undefined)
-      const sameTitleGroupIds = groupIds.filter(id => sessions.byId[id]?.displayTitle === title)
+        ? (sessions.ids as readonly string[]).filter((id) => !owned.has(id) && !archived.has(id) && sessionById(sessions, id) !== undefined)
+        : workspaceIds.filter(id => !archived.has(id) && sessionById(sessions, id) !== undefined)
+      const sameTitleGroupIds = groupIds.filter(id => sessionById(sessions, id)?.displayTitle === title)
       const rows = [...group.querySelectorAll<HTMLElement>(':scope > [class*="_sessionRow"]')]
       const rowIndex = rows.indexOf(row)
       const sameTitleBefore = rowIndex === -1

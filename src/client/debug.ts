@@ -3,8 +3,8 @@ import { DESKTOP_QUERY, MOBILE_QUERY } from './effects/phone-chrome.ts'
 /**
  * Debug badge — ?mobile-nav-debug=1
  * Renders a live state overlay (URL, viewport, media queries, shell chrome,
- * aionui columns, genui cards, captured errors) so a phone-side repro can be
- * diagnosed without guessing. No-op unless the query param is present.
+ * host panels, captured errors) so a phone-side repro can be diagnosed
+ * without guessing. No-op unless the query param is present.
  */
 export function installDebugBadge(ctx: ClientContext): void {
   ctx.effect(() => {
@@ -50,8 +50,7 @@ export function installDebugBadge(ctx: ClientContext): void {
         `mq≤1023 ${matchMedia(MOBILE_QUERY).matches}  mq≥1024 ${matchMedia(DESKTOP_QUERY).matches}`,
         `safeTop framePad ${frame === null ? 'n/a' : getComputedStyle(frame).paddingTop}  rightPanel ${rightPanel()}`,
         `css ${q('style[data-plugin-css*="mobile"]')}  frame ${!!frame}`,
-        `previewCol ${vis('[data-aionui-preview-col]')}  explorerCol ${vis('[data-aionui-explorer-col]')}`,
-        `previewOpen ${frame?.hasAttribute('data-aionui-preview-open') ?? '?'}  explorerOpen ${frame?.hasAttribute('data-aionui-explorer-open') ?? '?'}  previewFull ${frame?.hasAttribute('data-mobile-preview-full') ?? '?'}`,
+        `rightSidebar expand ${q('[data-sidebar-right-expand]')}  toggle ${q('[data-sidebar-right-toggle]')}`,
         `header ${vis('[data-phase] header')}  composer ${q('textarea, [data-composer-input]')}`,
         `genui cards ${document.querySelectorAll('[data-genui]').length}  panel ${q('[data-genui-panel]')}`,
         `phase ${document.querySelector('[data-phase]')?.getAttribute('data-phase') ?? '?'}`,

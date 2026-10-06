@@ -3,12 +3,9 @@ import { consumeIfGestured, isStrokeLocked } from './gesture-guard.ts'
 import { findSessionIdInFiber, isTapWithinSlop, reactFiberOf } from './session-row-fiber.ts'
 import { createReconcilerCore } from '../core/reconciler-core.ts'
 import type { ReconcilerTask } from '../core/reconciler-core.ts'
-import { currentSessionIdOf, sessionsCanOpen } from '../core/sessions-compat.ts'
-import { createPreviewCloseTask, createSheetRiseTask } from './aionui-compat.ts'
+import { currentSessionIdOf, openSession, sessionById, sessionsCanOpen } from '../core/sessions-compat.ts'
 import { createStatsLineTask } from './stats-line.ts'
-import { createPreviewFullscreenTask } from './preview-fullscreen.ts'
 import { createOverlayTask } from './overlay-backdrop-fab.ts'
-import { createFileViewerMarkerTask } from './file-viewer-compat.ts'
 import type { PanelExit } from './panel-exit.ts'
 import { closeDrawerAnimated } from './sidebar-swipe.ts'
 
@@ -172,9 +169,6 @@ export function installFrameController(): () => void {
     dispose: () => {
       if (frame !== null) {
         frame.removeAttribute('data-mobile-nav')
-        frame.removeAttribute('data-mobile-preview-full')
-        frame.removeAttribute('data-aionui-explorer-open')
-        frame.removeAttribute('data-aionui-preview-open')
       }
       if (typeof document !== 'undefined') {
         document.querySelector(DISMISS_SHADOW_SELECTOR)?.remove()
@@ -191,8 +185,8 @@ export function installFrameController(): () => void {
 /**
  * One unit of DOM reconciliation driven by the shared full-tree observer.
  * Defined in the DOM-free core so registration / dirty routing / coalescing
- * are unit-testable; kept reachable from here so the third-party task modules
- * (aionui-compat, stats-line) keep importing it via `./phone-chrome.ts`.
+ * are unit-testable; kept reachable from here so task modules (stats-line)
+ * keep importing it via `./phone-chrome.ts`.
  */
 export type { ReconcilerTask } from '../core/reconciler-core.ts'
 
@@ -247,9 +241,6 @@ export function installReconciler(ctx: ClientContext): () => void {
         'class',
         'data-phase',
         'data-sidebar-collapsed',
-        'data-aionui-explorer-open',
-        'data-aionui-preview-open',
-        'data-mobile-preview-full',
       ],
     })
     core.activate()
@@ -671,8 +662,7 @@ export function installOverlayInteractions(ctx: ClientContext): void {
      *  `ctx.sessions.open` fails loud on unknown ids — membership is the only
      *  filter that can never hand the host a guess. */
     const isKnownSessionId = (id: string): boolean => {
-      const snapshot = ctx.sessions.list.getSnapshot()
-      return snapshot.byId[id] !== undefined
+      return sessionById(ctx.sessions.list.getSnapshot(), id) !== undefined
     }
 
     /** The session a finished tap on `row` should open, or null to fall back to
@@ -853,7 +843,7 @@ export function installOverlayInteractions(ctx: ClientContext): void {
             disarmNav()
             if (sessionsCanOpen(ctx.sessions)) {
               closeOnNavigation(tappedId)
-              ctx.sessions.open(tappedId)
+              openSession(ctx.sessions, tappedId)
             } else {
               // a2 removed sessions.open (retain-model navigation) — the
               // store-subscription closer above watches `current`, which a2
@@ -920,13 +910,9 @@ export function registerReconcileTasks(ctx: ClientContext, panelExit: PanelExit)
   reconcileTasksRegistered = true
   const t = ctx.locale.bind(NS)
   const removeTasks = [
-    addReconcilerTask(createPreviewFullscreenTask(t)),
-    addReconcilerTask(createPreviewCloseTask()),
-    addReconcilerTask(createSheetRiseTask()),
     addReconcilerTask(createStatsLineTask()),
     addReconcilerTask(createOverlayTask(t, () => toggleDrawer(ctx), panelExit)),
     addReconcilerTask(panelExit.task),
-    addReconcilerTask(createFileViewerMarkerTask()),
   ]
   return () => {
     for (const remove of removeTasks) remove()

@@ -17,7 +17,6 @@ import { installTeamChipToggle } from './effects/team-chip-toggle.ts'
 import { installModelMenuAnchor } from './effects/model-menu-anchor.ts'
 import { installShortcutModalKeyboardGuard } from './effects/shortcut-modal-keyboard-guard.ts'
 import { installSessionFocusGuard } from './effects/session-focus-guard.ts'
-import { installAionuiCompat } from './effects/aionui-compat.ts'
 import { createPanelExit, installPanelRowExit } from './effects/panel-exit.ts'
 import { createRafScheduler } from './core/raf-scheduler.ts'
 import { installDebugBadge } from './debug.ts'
@@ -253,8 +252,6 @@ export function apply(ctx: ClientContext): void {
   installSessionFocusGuard(ctx)
 
   installPhoneChrome(ctx)
-
-  installAionuiCompat(ctx)
 
   // Debug badge (?mobile-nav-debug=1): live state overlay for phone-side
   // repros. No-op without the query param (docs: README, AGENTS.md).

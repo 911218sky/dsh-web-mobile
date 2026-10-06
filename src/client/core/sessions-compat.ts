@@ -5,12 +5,23 @@
 // `Object.values(byId).find(s => (s.retainedBy.mainView ?? 0) > 0)?.id`).
 // These helpers let call sites stay compile-green against rc.2 typings while
 // degrading explicitly on an a2 host instead of throwing or silently dying.
+//
+// Host generations also disagree on whether session ids are plain `string` or
+// a branded `SessionId`. DOM / fiber paths only ever produce strings; cast at
+// this boundary so call sites stay free of brand gymnastics.
 
 /** Structural view across generations — never import service types here, so
  *  the helper compiles against either generation's typings. */
+interface SessionSummaryLike {
+  id?: unknown
+  retainedBy?: { mainView?: unknown }
+  blank?: unknown
+  displayTitle?: unknown
+}
+
 interface SessionListLike {
   current?: unknown
-  byId?: Record<string, { id?: unknown; retainedBy?: { mainView?: unknown } }>
+  byId?: Record<string, SessionSummaryLike>
 }
 
 /** The current session id: rc.2's `current` field when present, else the a2
@@ -30,6 +41,14 @@ export function currentSessionIdOf(list: unknown): string | undefined {
   return undefined
 }
 
+/** Look up one summary by plain string id (works across branded SessionId maps). */
+export function sessionById(list: unknown, id: string): SessionSummaryLike | undefined {
+  if (typeof list !== 'object' || list === null) return undefined
+  const byId = (list as SessionListLike).byId
+  if (byId === undefined) return undefined
+  return byId[id]
+}
+
 /** a2 removed `clear()` (selection lifecycle moved to the retain model). */
 export function sessionsCanClear(sessions: unknown): boolean {
   return typeof (sessions as { clear?: unknown } | null | undefined)?.clear === 'function'
@@ -39,4 +58,10 @@ export function sessionsCanClear(sessions: unknown): boolean {
  *  phone-chrome) instead of throwing inside the capture pointerup listener. */
 export function sessionsCanOpen(sessions: unknown): boolean {
   return typeof (sessions as { open?: unknown } | null | undefined)?.open === 'function'
+}
+
+/** Open a session by plain string id across branded SessionId host typings. */
+export function openSession(sessions: unknown, id: string): void {
+  const open = (sessions as { open?: (sessionId: never) => void } | null | undefined)?.open
+  open?.(id as never)
 }
