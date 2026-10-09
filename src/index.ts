@@ -18,6 +18,7 @@
  * type-imported: this repo's node_modules only carries the client-side
  * @deepseek-ai packages, so all host faces are declared structurally below.
  */
+import { timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { installResponseCompression } from './compress.js'
 import { deleteSession, type DeleteSessionDeps } from './delete-session.js'
@@ -85,7 +86,9 @@ function readBody(req: IncomingMessage): Promise<string> {
 }
 
 /** Same-origin gate: a browser-supplied Origin header must name the same host
- * as the request itself. Missing/empty Origin = non-browser client = allowed.
+ * as the request itself. Missing/empty Origin = non-browser client — the
+ * companion {@link isMissingOriginAuthorized} gate decides whether that
+ * client may proceed (loopback / session cookie / known token).
  * No allowlist: localhost / 127.0.0.1 / LAN entries all work via host
  * equality, so same-origin browser POSTs (which always carry Origin) pass. */
 function sameOrigin(req: IncomingMessage): boolean {
@@ -98,6 +101,73 @@ function sameOrigin(req: IncomingMessage): boolean {
   }
 }
 
+function isLoopbackAddress(addr: string): boolean {
+  return (
+    addr === '127.0.0.1' ||
+    addr === '::1' ||
+    addr === ':ffff:127.0.0.1' ||
+    addr === '::ffff:127.0.0.1' ||
+    addr.endsWith('127.0.0.1')
+  )
+}
+
+function timingSafeStringEqual(actual: string, expected: string): boolean {
+  const a = Buffer.from(actual, 'utf8')
+  const b = Buffer.from(expected, 'utf8')
+  if (a.byteLength !== b.byteLength) {
+    timingSafeEqual(a, a)
+    return false
+  }
+  return timingSafeEqual(a, b)
+}
+
+function knownAuthTokens(): string[] {
+  return [
+    process.env.DSH_WEB_TOKEN,
+    process.env.DSH_TOKEN,
+    process.env.DSH_BROWSER_LAUNCH_TOKEN,
+  ].filter((t): t is string => typeof t === 'string' && t.length > 0)
+}
+
+function matchesKnownToken(value: string): boolean {
+  return knownAuthTokens().some((token) => timingSafeStringEqual(value, token))
+}
+
+function hasStructuredSessionCookie(req: IncomingMessage): boolean {
+  const cookie = String(req.headers.cookie || '')
+  if (!cookie) return false
+  for (const segment of cookie.split(';')) {
+    const at = segment.indexOf('=')
+    if (at === -1) continue
+    const name = segment.slice(0, at).trim()
+    const value = segment.slice(at + 1).trim()
+    if (!name.startsWith('dsh-auth-')) continue
+    // DSH signed cookie: v1.<body>.<sig>
+    if (/^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value)) return true
+  }
+  return false
+}
+
+function hasRequestToken(req: IncomingMessage): boolean {
+  const header = req.headers['x-dsh-web-token']
+  if (typeof header === 'string' && matchesKnownToken(header)) return true
+  const auth = req.headers.authorization
+  if (typeof auth === 'string') {
+    const m = /^Bearer\s+(\S+)$/i.exec(auth.trim())
+    if (m?.[1] && matchesKnownToken(m[1])) return true
+  }
+  return false
+}
+
+/** Non-browser delete clients (no Origin): loopback, session cookie, or token. */
+function isMissingOriginAuthorized(req: IncomingMessage): boolean {
+  const addr = req.socket.remoteAddress || ''
+  if (isLoopbackAddress(addr)) return true
+  if (hasStructuredSessionCookie(req)) return true
+  if (hasRequestToken(req)) return true
+  return false
+}
+
 /** Write one JSON response with a fixed content type. */
 function respond(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body)
@@ -106,6 +176,13 @@ function respond(res: ServerResponse, status: number, body: unknown): void {
     'Content-Length': Buffer.byteLength(payload),
   })
   res.end(payload)
+}
+
+/** Early failure before `readBody`: discard any unread body so keep-alive
+ * sockets are not left half-open after the JSON error reply. */
+function respondFailure(req: IncomingMessage, res: ServerResponse, status: number, body: unknown): void {
+  req.resume()
+  respond(res, status, body)
 }
 
 /**
@@ -132,11 +209,21 @@ export function apply(ctx: HostContext): void {
       path: '/api/mobile-nav.session.delete',
       handler: async (req, res) => {
         if (req.method !== 'POST') {
-          respond(res, 405, { error: { code: 'method-not-allowed', message: 'POST required' } })
+          respondFailure(req, res, 405, { error: { code: 'method-not-allowed', message: 'POST required' } })
           return
         }
         if (!sameOrigin(req)) {
-          respond(res, 403, { error: { code: 'cross-origin', message: 'cross-origin request rejected: Origin host does not match the request host' } })
+          respondFailure(req, res, 403, { error: { code: 'cross-origin', message: 'cross-origin request rejected: Origin host does not match the request host' } })
+          return
+        }
+        const origin = req.headers.origin
+        if ((origin === undefined || origin === '') && !isMissingOriginAuthorized(req)) {
+          respondFailure(req, res, 401, {
+            error: {
+              code: 'unauthorized',
+              message: 'missing Origin requires loopback, a DSH session cookie, or a known token',
+            },
+          })
           return
         }
         let body: DeleteSessionBody

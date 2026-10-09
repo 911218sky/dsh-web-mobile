@@ -22,22 +22,33 @@ test('the host entry declares the documented plugin name', () => {
 // these text anchors lock the security contract into the source.
 test('the delete endpoint enforces same-origin and a 1 MiB body cap', () => {
   assert.match(source, /const MAX_BODY_BYTES = 1_048_576/)
-  // Origin present → must equal the request Host; absent/empty → allowed.
+  // Origin present → must equal the request Host; absent/empty → sameOrigin
+  // allows, then isMissingOriginAuthorized requires loopback/cookie/token.
   assert.match(source, /function sameOrigin\(req: IncomingMessage\): boolean/)
   assert.match(source, /new URL\(origin\)\.host === req\.headers\.host/)
   assert.match(source, /origin === undefined \|\| origin === ''\) return true/)
+  assert.match(source, /function isMissingOriginAuthorized\(req: IncomingMessage\): boolean/)
+  assert.match(source, /isLoopbackAddress\(addr\)/)
+  assert.match(source, /hasStructuredSessionCookie\(req\)/)
+  assert.match(source, /hasRequestToken\(req\)/)
   assert.match(source, /code: 'cross-origin'/)
+  assert.match(source, /code: 'unauthorized'/)
+  // Early failures before readBody drain the unread body (keep-alive safety).
+  assert.match(source, /function respondFailure\(/)
+  assert.match(source, /req\.resume\(\)/)
   // Oversized body → 413; buffered data released, rest drained, so the
   // response is deliverable (no mid-stream destroy racing the reply).
   assert.match(source, /class PayloadTooLargeError extends Error/)
   assert.match(source, /code: 'payload-too-large'/)
   assert.match(source, /tooLarge = true/)
   assert.match(source, /data = ''/)
-  // Gate runs after the method check and before the body is read.
+  // Gate order: method → sameOrigin → missing-Origin auth → body read.
   const originGate = source.indexOf('if (!sameOrigin(req))')
+  const missingOriginAuth = source.indexOf('isMissingOriginAuthorized(req)')
   const bodyRead = source.indexOf('await readBody(req)')
   const methodCheck = source.indexOf("req.method !== 'POST'")
   assert.notEqual(originGate, -1)
+  assert.notEqual(missingOriginAuth, -1)
   assert.notEqual(bodyRead, -1)
-  assert.ok(methodCheck < originGate && originGate < bodyRead)
+  assert.ok(methodCheck < originGate && originGate < missingOriginAuth && missingOriginAuth < bodyRead)
 })

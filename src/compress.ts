@@ -27,6 +27,10 @@
  * fire-once, in order, right after the real end(), without error propagation
  * (the real flush cannot fail them individually).
  *
+ * On dispose (plugin unload / hot-reload), in-flight deferred responses are
+ * flushed uncompressed via a live Set (WeakMap alone is not iterable), then
+ * the prototype methods are restored.
+ *
  * Ported from community fork wzxmt-zhc/dsh-web-mobile (v2.5.0).
  */
 import { brotliCompressSync, constants as zlibConstants, gzipSync } from 'node:zlib'
@@ -55,6 +59,10 @@ interface DeferredResponse {
 
 /** Per-response state; only present while a JSON response is being deferred. */
 const deferred = new WeakMap<ServerResponse, DeferredResponse>()
+
+/** Strong refs for in-flight deferred responses so dispose can flush them
+ * (WeakMap alone is not iterable). Cleared on end() or disposer flush. */
+const liveDeferred = new Set<ServerResponse>()
 
 /** Choose the codec the client accepts; `br` outranks `gzip`. */
 function pickEncoding(res: ServerResponse): 'br' | 'gzip' | null {
@@ -116,6 +124,41 @@ function writeHeadWith(res: ServerResponse, origWriteHead: (...args: unknown[]) 
   return origWriteHead.apply(res, args) as ServerResponse
 }
 
+/** Drop tracking for one deferred response (end path or dispose flush). */
+function clearDeferred(res: ServerResponse): DeferredResponse | undefined {
+  const pending = deferred.get(res)
+  deferred.delete(res)
+  liveDeferred.delete(res)
+  return pending
+}
+
+/** Flush one deferred response uncompressed (plugin unload / hot-reload). */
+function flushDeferredUncompressed(
+  res: ServerResponse,
+  pending: DeferredResponse,
+  origWriteHead: (...args: unknown[]) => ServerResponse,
+  origEnd: (chunk?: unknown, ...rest: unknown[]) => ServerResponse,
+): void {
+  const body = Buffer.concat(pending.chunks)
+  const headers = { ...pending.headers }
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === 'content-length') delete headers[key]
+  }
+  if (body.byteLength > 0) headers['content-length'] = body.byteLength
+  try {
+    writeHeadWith(res, origWriteHead, pending, headers)
+    if (body.byteLength === 0) origEnd.apply(res, [] as never)
+    else origEnd.apply(res, [body] as never)
+    fireWriteCallbacks(pending)
+  } catch {
+    try {
+      res.destroy()
+    } catch {
+      // Best-effort: socket may already be gone during unload.
+    }
+  }
+}
+
 /**
  * Install the compression patch on http.ServerResponse.prototype.
  * @returns disposer restoring the original methods (plugin reload safety).
@@ -140,6 +183,7 @@ export function installResponseCompression(): () => void {
     }
     // Hold the header write until the body size is known (see module doc).
     deferred.set(this, { writeHeadArgs: args, headers, encoding, chunks: [], writeCallbacks: [] })
+    liveDeferred.add(this)
     return this
   }
 
@@ -159,13 +203,12 @@ export function installResponseCompression(): () => void {
   }
 
   function patchedEnd(this: ServerResponse, chunk?: unknown, ...rest: unknown[]): ServerResponse {
-    const pending = deferred.get(this)
+    const pending = clearDeferred(this)
     if (pending === undefined) {
       return chunk === undefined
         ? origEnd.apply(this, rest as never) as ServerResponse
         : origEnd.apply(this, [chunk, ...rest] as never) as ServerResponse
     }
-    deferred.delete(this)
     // `end(callback)`: the function is a completion callback, never body
     // data — keep it out of the buffers and replay it at the real end().
     const callbacks = (typeof chunk === 'function' ? [chunk, ...rest] : rest)
@@ -211,8 +254,16 @@ export function installResponseCompression(): () => void {
   proto.end = patchedEnd
 
   return () => {
+    // Snapshot before restoring prototypes so concurrent end() cannot race
+    // the flush through the patched path.
+    const inFlight = [...liveDeferred]
     if (proto.writeHead === patchedWriteHead) proto.writeHead = origWriteHead
     if (proto.write === patchedWrite) proto.write = origWrite
     if (proto.end === patchedEnd) proto.end = origEnd
+    for (const res of inFlight) {
+      const pending = clearDeferred(res)
+      if (pending === undefined) continue
+      flushDeferredUncompressed(res, pending, origWriteHead, origEnd)
+    }
   }
 }

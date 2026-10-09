@@ -142,3 +142,37 @@ test('buffered strings honor the write()/end() encoding, e.g. latin1 (issue #80)
     restore()
   }
 })
+
+test('dispose flushes in-flight deferred responses uncompressed', async () => {
+  const { installResponseCompression } = await import('../src/compress.ts')
+  const http = await import('node:http')
+  const restore = installResponseCompression()
+  const payload = JSON.stringify({ data: 'z'.repeat(8 * 1024) })
+  let deferredStarted!: () => void
+  const started = new Promise<void>((resolve) => { deferredStarted = resolve })
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.write(payload)
+    deferredStarted()
+    // Deliberately do not end — dispose must flush the buffered body.
+  })
+  try {
+    await new Promise<void>((resolveListen) => server.listen(0, resolveListen))
+    const port = (server.address() as { port: number }).port
+    const resultPromise = new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }>((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port, headers: { 'accept-encoding': 'gzip' } }, (res) => {
+        const chunks: Buffer[] = []
+        res.on('data', (c: Buffer) => chunks.push(c))
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks) }))
+      }).on('error', reject)
+    })
+    await started
+    restore()
+    const out = await resultPromise
+    assert.equal(out.status, 200)
+    assert.equal(out.headers['content-encoding'], undefined)
+    assert.equal(out.body.toString(), payload)
+  } finally {
+    server.close()
+  }
+})
