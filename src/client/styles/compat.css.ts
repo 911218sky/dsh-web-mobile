@@ -64,18 +64,11 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
 
   /* ---------- dshmarket polish: Tasks operations popup ----------
-     Upstream .opPanel is a small dropdown pinned to the right edge of its
-     ~54px trigger button; on a phone it reads as stuck to the sheet edge
-     instead of centered. Promote it to a fixed, viewport-centered card:
-     no ancestor between the popup and the viewport carries a transform,
-     so position:fixed centers against the real viewport (a plain left:50%
-     would resolve against the tiny relative trigger wrapper and land even
-     further right). The upstream 86vw width cap, 70vh max-height and
-     internal scroll all still apply; the close button stays inside.
-     2026-09-25: re-anchored from [data-mobile-nav="frame"] [aria-modal]
-     to the market's own root marker — since rc.2 the whole settings
-     sheet (market included) is portaled to <body> and no longer matches a
-     frame-descendant selector. */
+     Upstream .opPanel pins to its ~54px trigger and reads edge-stuck on
+     phones. Use fixed centering against the viewport (left:50% on the
+     relative trigger would land further right). Anchor on
+     [data-dsh-market-root] — rc.2+ portals the settings sheet to <body>,
+     so frame-descendant selectors no longer match. */
   [data-dsh-market-root] [class*="_opPanel"] {
     position: fixed !important;
     top: 50% !important;
@@ -110,18 +103,10 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
 
   /* ---------- dshmarket polish: card byline stays on one line ----------
-     The byline (avatar · owner · version · ↓downloads · ★stars) is a
-     wrapping flex row by upstream design — the market would rather drop
-     the counts to a second line than over-shrink the owner name (its
-     .owner carries flex:0 1 auto + ellipsis + min-width:44px exactly for
-     that). At a phone's card width the break point lands mid-row though:
-     everything but the star fits, so a lone "· ★ 8k" wraps onto its own
-     line under the author — inconsistent with the cards that happen to
-     fit, which reads as a rendering bug (owner report 2026-09-25,
-     IMG_4208: dsh-remote-web-ui and dsh-skill-explorer both orphaned the
-     star). Pin the row to one line instead: the owner is the market's own
-     flexible item, so it absorbs the squeeze and the counts stay whole.
-     Desktop cards are far wider than the row and never wrapped anyway. */
+     Upstream lets the byline wrap so the owner name is not crushed; on
+     phone card widths the break often orphans the star count on its own
+     line. Pin nowrap so the flexible owner absorbs squeeze and counts
+     stay intact. Desktop cards are wide enough that wrap never fired. */
   [data-dsh-market-root] [class*="_byline"] {
     flex-wrap: nowrap !important;
   }
@@ -150,27 +135,11 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
 
   /* ---------- dshmarket 1.20+ compat: keep the settings nav visible ----------
-     Upstream Market.module.css hides the host dialog's nav on phones
-     ([role=dialog]:has([data-dsh-market-root]) > nav { display:none } at
-     max-width:560px) so the market can take over the dialog; its comment
-     assumes the host keeps "its own close button in the content header".
-     Our host's only close ✕ lives inside that very nav, so the market
-     would leave no categories and no way back or out (dead-end UI,
-     2026-08-23). Mirror upstream's exact media condition and restore the
-     nav: categories row + ✕ stay above the inline market page.
-     2026-09-25 (rc.2 regression): 0.1.7-rc.2 renders this sheet through
-     createPortal(..., document.body), so the frame-scoped selector matches
-     nothing on rc.2+ hosts and the market takeover silently won — no
-     categories row above the market page on every updated phone. The twin
-     rule below carries the same declaration on a structural anchor
-     ([role=dialog]:has(...) > nav, no frame prefix): on rc.1 hosts the
-     frame-scoped rule does the work and the twin is inert (the sheet is a
-     frame descendant there); on rc.2+ the twin carries it. Both stay
-     inside this file's mobile media wrapper, so desktop never sees them.
-     Premise note: this host generation keeps its close ✕ in the CONTENT
-     header (pinned top-right — see layout.css), so the dead-end half of
-     the 2026-08-23 report no longer applies; the rule is kept and twinned
-     for the categories row it restores (guarded by the test suite). */
+     Upstream hides dialog > nav under max-width:560px when the market is
+     present. Restore it so the categories row stays above the market page.
+     Twin selectors: frame-scoped for in-frame hosts (rc.1), unscoped
+     structural for body-portaled sheets (rc.2+). Both stay inside this
+     file's mobile media wrapper. */
   @media (max-width: 560px) {
     [data-mobile-nav="frame"] [role="dialog"]:has([data-dsh-market-root]) > nav {
       display: flex !important;
@@ -207,13 +176,10 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   [aria-modal="true"] details[class*="_customized"]:not([open]) > [class*="_customizedBody"] {
     display: none !important;
   }
-  /* Owner dialog footers (_w1urq family: the provider delete confirm, the
-     workspace rename dialog, ...): the footer buttons keep white-space
-     normal, so any width squeeze — a narrow viewport, a long provider name,
-     Android font scaling (owner report 2026-09-19, verified at 320px with a
-     1.3x font bump) — wraps the label inside the fixed 36px row where the
-     second line clips. Keep each label on one line and let the footer wrap
-     whole buttons to a second row instead. */
+  /* Dialog footers: white-space:normal lets labels wrap inside the fixed
+     36px button row under narrow viewports or Android font scaling, and
+     the second line clips. Keep labels nowrap; let the footer wrap whole
+     buttons to a second row instead. */
   [role="dialog"][aria-modal="true"] [class*="_footer"] {
     flex-wrap: wrap !important;
   }
@@ -490,27 +456,12 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
 
   /* ---------- git-graph branch chip: CSS re-anchor, no reparent (A′) ----------
-     The branch chip (conversation.input.dock) floats between the dock rows
-     and the input card; on a phone it reads as a stray capsule crowding the
-     composer. #105: the old fix reparented the chip INTO the composer card,
-     and React's unmount removeChild then threw NotFoundError into the
-     SlotErrorBoundary (same root cause as #104). A′ re-anchors instead:
-     the chip stays where React rendered it (inside the dock subtree) and
-     the composerStack becomes the containing block, with the anchor
-     constants = the card's static offset inside the stack + the original
-     (12,12) corner offset. Constants measured 2026-09-24 (CDP, 393px):
-     conversation phase card offset (16,0) → top 12 / left 28; hero phase
-     card offset (16,122.9) → top 134.9 / left 28 (hero override below).
-     The plugin's own sheet sets all four offsets on the anchor, so
-     right/bottom must be neutralized too. Desktop untouched: the frame
-     marker only exists below 1024px. Chip row geometry (2026-08-16, user
-     feedback): 48px padding left a 16px dead gap and made the composer read
-     too tall; 40px = chip (24px) at corner +12 + ~4px to the textarea; the
-     chip has since grown to 28px (git-graph chip CSS), so the row is 44px
-     (2026-09-06). The 44px clearance now keys off a STACK-level :has() —
-     the chip is no longer a card descendant, so a card-level :has() could
-     never match; the card disambiguation keeps non-composer cards (e.g. a
-     todo card sharing the stack) out of the chip row. */
+     Do not reparent the chip into the composer card (#105 / #104 —
+     React unmount then throws NotFoundError). Keep it in the dock subtree
+     and absolute-position against composerStack: conversation top/left
+     12/28, hero top 134.9 (card offset + corner inset). Neutralize
+     right/bottom. 44px stack-level padding-top clears the 28px chip;
+     card-level :has() cannot match once the chip is not a card descendant. */
   [data-mobile-nav="frame"] [class*="_composerStack"] {
     position: relative;
   }

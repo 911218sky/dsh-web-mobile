@@ -12,19 +12,11 @@ export const MISC_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   [data-phase="hero"] [class*="_card"]:has(textarea, [data-composer-input]) {
     gap: 8px !important;
   }
-  /* Composer stacks carrying the git branch chip must keep compat.css's 44px
-     chip clearance: that rule sets padding-top: 44px on the composer card of
-     any stack that contains the absolutely-positioned chip anchor (A′, #105:
-     the chip stays in the dock subtree and is re-anchored to the stack, so
-     the exclusion moved from the card level to this stack-level :not(:has())
-     — a card-level :has() could never match anymore). Chip geometry: top
-     corner +12 + 28px chip — the chip grew 24→28px, so the clearance grew
-     40→44px to keep the same ~4px breathing gap (2026-09-06). This compact
-     override used to stomp the clearance back to 6px with the same
-     specificity (this sheet loads after compat), so on the hero empty state
-     the chip painted over the input line (2026-09-06). Excluding
-     chip-bearing stacks restores the clearance; the textarea collapse below
-     still applies to them. */
+  /* Chip-bearing composer stacks must keep compat.css's 44px top clearance
+     (chip re-anchored to the stack under the dock; card-level :has() no
+     longer matches). This compact padding would otherwise override that
+     clearance after compat loads and paint the chip over the input. Exclude
+     chip stacks here; the textarea collapse below still applies to them. */
   [data-phase="hero"] [class*="_composerStack"]:not(:has([data-gitgraph-chip-anchor])) [class*="_card"]:has(textarea, [data-composer-input]) {
     padding-top: 6px !important;
   }
@@ -41,17 +33,10 @@ export const MISC_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   [data-phase="hero"] [class*="_card"]:has(textarea:placeholder-shown) [class*="_grow"] {
     height: 28px !important;
   }
-  /* The one-line collapse above is deliberately NOT mirrored onto the Lexical
-     generation (0.1.2+), even though it signals its empty state with the
-     separate [data-composer-placeholder] node. That host pins the hero input
-     itself — hero-scoped min-height: 52px, because its hero hint wraps to two
-     lines — and a min-height floor beats an outer height: the 28px wrappers of
-     2026-09-05 only shrank the scrollport under a 52px input, i.e. overflow-y
-     auto with scrollHeight 52 against clientHeight 28 → scrollbar plus a
-     clipped first input line and hint line (phone report 2026-09-14, probe
-     scripts/probes/hero-composer-clip-probe.mjs). The textarea generation this
-     collapse was written for has no such floor — its input is a transparent
-     height:100% layer over the wrappers — so it still collapses there. */
+  /* Do not mirror the one-line collapse onto Lexical hosts (0.1.2+). Those
+     pin the hero input at min-height: 52px, which beats an outer 28px height
+     and clips the first line plus hint. Textarea hosts have no such floor
+     (transparent height:100% over the wrappers), so collapse stays valid. */
   [data-phase="hero"] [class*="_card"]:has(textarea, [data-composer-input]) > [class*="_row"] {
     padding-top: 2px !important;
   }
@@ -64,19 +49,10 @@ export const MISC_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
 
   /* ---------- composer dock: swap git branch chip with the todo card ----------
-     The git-graph branch chip (conversation.input.dock, order 100) floats
-     alone at the bottom-left above the input card, with a dead zone to its
-     right; the full-width todo card (order 0) sits above it. Swap them so
-     the chip reads as the stack's top row and the todo card fills the row
-     above the composer. The dock container itself is display:contents
-     (inline style) — its children are direct flex items of the composer
-     stack, so order on the children is what reorders them. Only the chip
-     needs an order change: -1 puts it before the todo card (order 0) and
-     before the input card (order 0, later in DOM). The todo card must KEEP
-     its order 0 — raising it past the input card's order 0 would drop it
-     below the composer entirely (2026-08-16 regression, fixed). The queue
-     strip (order 20) keeps hugging the input card. Desktop untouched (this
-     block lives inside the max-width: 1023px media query). */
+     Dock is display:contents, so order on its children reorders the stack.
+     Chip order -1 places it above the todo and input cards. Leave the todo
+     card at order 0 — raising it past the input would drop it below the
+     composer. Queue strip (order 20) stays next to the input. */
   [data-slot="conversation.input.dock"] [data-gitgraph-chip-anchor] {
     order: -1 !important;
   }
@@ -98,68 +74,26 @@ export const MISC_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     transition: transform .12s !important;
   }
 
-  /* ---------- ask question composer (ask_user_question): kill iOS Safari
-      input-focus auto-zoom ----------
-      Safari on iPhone enlarges the whole viewport when a focused <input> /
-      <textarea> computes font-size < 16px, and only reverts on blur. The ask
-      dialog is a modal composer takeover, so taps outside never blur the
-      field and the magnification persists until the field loses focus
-      (e.g. the dialog is dismissed). The ask
-      composer's custom-answer <input> (.customInput) and optionless free-form
-      <textarea> (.customTextarea) both ship at 14px (ui-user-questions
-      QuestionComposer.module.css). Raise them to 16px on iOS only, where the
-      zoom can actually happen: on Android and desktop there is nothing to
-      suppress, so they keep the compact size they were designed with
-      (2026-09-16, audit D-1 option A; the iOS WebKit floor below covers these
-      fields too, this rule keeps the requirement stated where it applies).
-      Scoped to the ask
-      composer's stable [data-question-key] root (AGENTS.md: scope hashed-class
-      selectors to the owning region, prefer stable data-* markers); the
-      class-name suffix match follows the plugin's established harness
-      CSS-module convention (verified against the live app: generated names
-      end with the original local name, e.g. uV2eYG_input / bhn1Oq_searchInput). */
+  /* ---------- ask question composer: prevent iOS Safari focus zoom ----------
+     Focused fields under 16px trigger viewport zoom that only reverts on
+     blur; the ask modal keeps focus, so zoom would stick. Raise .customInput
+     / .customTextarea to 16px on iOS only (Android/desktop keep 14px). Scope
+     to [data-question-key]; hashed class suffix match follows harness CSS-
+     module naming. The global iOS floor below also covers these fields. */
   html[data-mobile-nav-ios] [data-question-key] [class*="_customInput"],
   html[data-mobile-nav-ios] [data-question-key] [class*="_customTextarea"] {
     font-size: 16px !important;
   }
 
-  /* ---------- iOS WebKit: hold every text field at >=16px so Safari never
-      focus-zooms the viewport (#45) ----------
-      Report (iPhone 15 Pro Max): the page magnifies as soon as a field takes
-      focus, sometimes also when switching sessions (the host composer mounts
-      with autoFocus), and it stays magnified until the app is closed and
-      reopened or rotated landscape->portrait.
-      Mechanism: iOS Safari enlarges the visual viewport whenever a focused
-      input / textarea computes below 16px, and it only zooms back out on
-      blur — a chat shell keeps the composer focused, so the zoom has no
-      moment to revert; before this fix the root touch-action also withheld
-      pinch-zoom, so the user could not pull it back out either (see
-      layout.css.ts). maximum-scale=1 in the viewport meta is NOT the fix:
-      iOS 10+ ignores it for user pinch zoom while other engines honor it, so
-      writing it would only take zoom away from Android. Raising the fields is
-      the fix that stays inside the standard.
-      Gated on html[data-mobile-nav-ios] (phone-chrome.ts detectIosWebKit)
-      because only WebKit on iOS zooms on focus: Android and desktop keep the
-      compact 13px search boxes they were designed with. The floor covers
-      every text-entry field on the page, including the ones portalled
-      outside the frame (settings dialogs, the market sheet, third-party
-      panels) — a phone can reach all of them. Button-like and widget inputs
-      are excluded (nothing to type, no keyboard), and select is left alone on
-      purpose: it would break the composer's 28px access-mode control, and a
-      native picker overlays the screen instead of leaving a zoomed page
-      behind. The composer's mirror / backdrop layers ride along with the
-      textarea: they measure the autosize height and paint the highlight, so
-      all three must share one font-size or the caret drifts off the text
-      (they inherit 16px from the host card today — the rule locks that in on
-      hosts whose composer ships smaller).
-      The contenteditable branch is the forward-looking one: dsh
-      0.1.2-rc.1 replaces the composer textarea with a Lexical
-      contenteditable whose card reads font-size:
-      var(--dsh-content-font-size, 14px), i.e. 14px by default — squarely in
-      the zoom-triggering range. Match the attribute rather than the value
-      "true" (Lexical writes "true", other hosts use plaintext-only or the
-      bare attribute) and exclude contenteditable="false", which Lexical puts
-      on decorator nodes inside the editor. */
+  /* ---------- iOS WebKit: keep text fields ≥16px to avoid focus zoom (#45) ----------
+     iOS Safari zooms when a focused field computes under 16px and only
+     reverts on blur; a chat shell keeps the composer focused, so zoom sticks.
+     Do not use maximum-scale=1 (breaks Android pinch). Gate on
+     html[data-mobile-nav-ios]. Cover portalled fields too; skip button-like
+     inputs and select (native picker; would break the 28px access-mode
+     control). Keep mirror/backdrop layers in sync with the textarea so the
+     caret stays aligned. Match [contenteditable] broadly (Lexical and other
+     hosts) but exclude contenteditable="false" decorator nodes. */
   html[data-mobile-nav-ios] textarea,
   html[data-mobile-nav-ios] [contenteditable]:not([contenteditable="false"]),
   html[data-mobile-nav-ios] [data-input-mirror],
@@ -169,20 +103,10 @@ export const MISC_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
 
   /* ---------- drawer session tree: skip off-screen rendering ----------
-     The drawer mounts ~389 nodes at once (the open gesture early-commits
-     the host state while the drawer is still off-screen), and during
-     streaming every token commit re-lays-out tree rows that are not even
-     visible. content-visibility: auto lets the engine skip layout and
-     paint of the session tree while it is outside the viewport (the arm
-     moment of the open gesture) and of off-screen rows when the drawer is
-     open on a long conversation. contain-intrinsic-size keeps the scroll
-     geometry stable while rows are skipped. Scoped to the drawer tree via
-     the frame marker + first child so the explorer sheet tree (a different
-     subtree) is not affected. Measured with CDP Tracing on an empty
-     conversation at 1x CPU (2026-08-29): biggest script task 104 -> 66ms,
-     max rAF gap 167 -> 33ms; the benefit scales with conversation length.
-     Desktop untouched (this block lives inside the max-width: 1023px
-     media query). */
+     content-visibility: auto skips layout/paint for off-screen session rows
+     during open and streaming; contain-intrinsic-size keeps scroll geometry
+     stable. Scope to the drawer tree (frame + first child) so the explorer
+     sheet tree is untouched. */
   [data-mobile-nav="frame"] > :first-child [role="tree"] {
     content-visibility: auto;
     contain-intrinsic-size: auto 600px;
@@ -224,19 +148,12 @@ export const MISC_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
 }
 
 /* ---------- desktop / non-touch: the mobile controls must never appear ----------
-   Exact complement of the mobile query "(max-width: 1023px) and (pointer:
-   coarse)" as a comma list (NOT A or NOT B): any viewport ≥1024px, plus any
-   narrow viewport whose primary pointer is a mouse (fine) or absent (none).
-   The pointer terms are what keep the header Files button off narrow desktop
-   windows — the slot renders the buttons at every width, so before this the
-   only guard was the width term (2026-08-30 PC leak: split windows and OS
-   display scaling dropped the CSS viewport below 1024px and armed the whole
-   mobile shell on desktop).
-
-   The session-delete trio (menu item + confirm/error dialog) is the ONE
-   deliberate exception: its effect arms on TOUCH_QUERY (pointer: coarse at
-   every width — large tablets in landscape), so it lives in the pointer-only
-   block below instead of this width arm. */
+   Complement of "(max-width: 1023px) and (pointer: coarse)": any viewport
+   ≥1024px, or a narrow viewport with pointer fine/none. Pointer terms matter
+   — width alone would arm the mobile shell when desktop split-windows or
+   OS scaling push the CSS viewport below 1024px.
+   Session-delete is excluded here: it arms on TOUCH_QUERY at every width, so
+   it is hidden in the pointer-only block below. */
 
 @media (min-width: 1024px), (pointer: fine), (pointer: none) {
   [data-mobile-nav="toggle"],

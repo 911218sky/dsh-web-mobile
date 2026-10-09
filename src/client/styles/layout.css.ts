@@ -138,22 +138,10 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
      both get removed). Nothing in this plugin queries that element; the drawer
      still opens from our toggle, the edge swipe, and closes by tapping the
      backdrop or swiping it away. */
-  /* Two selectors and both are needed. The competitor is NOT the host's own
-     CSS: @linxin666/dsh-web-all injects, under (max-width: 768px),
-     [data-dsh-frame][data-sidebar-collapsed] [data-pane="sidebar"]
-     [data-dsh-responsive-part="sidebar-toggle"] { pointer-events: auto;
-     display: inline-flex !important }. That is 4 attribute selectors AND
-     !important - exactly what the first selector below is - so this is NOT an
-     out-specify, it is a TIE decided by sheet order, and it holds only because
-     our sheet is injected after theirs. Measured twice, not inferred:
-     scripts/probes/cascade-conflict-probe.mjs reports both sides imp=true at
-     (0,4,0) and lists this as a reviewed order-tie; if the injection order
-     flips, the dismiss shadow returns as a visible inline-flex box with
-     pointer-events restored. Done (audit D-5 option A, 2026-09-16): every
-     selector below carries a leading html, which lifts the first one to
-     (0,4,1) and ends the tie - the outcome no longer depends on which sheet is
-     injected later. The hash class and the label stay as fallbacks for hosts
-     without that hook. */
+  /* Competing with @linxin666/dsh-web-all's mobile sidebar-toggle show rule
+     (same (0,4,0) + !important). Leading html lifts us to (0,4,1) so the
+     outcome does not depend on sheet injection order. Hash-class and
+     aria-label fallbacks cover hosts without the responsive-part hook. */
   html [data-mobile-nav="frame"][data-sidebar-collapsed] [data-pane="sidebar"] [data-dsh-responsive-part="sidebar-toggle"],
   html [data-mobile-nav="frame"] [data-dsh-responsive-part="sidebar-toggle"],
   html [data-mobile-nav="frame"] [class*="hHd-Xa_toggle"]:is([aria-label*="sidebar" i], [aria-label*="侧边栏"]),
@@ -171,32 +159,17 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
     display: none !important;
   }
 
-  /* The host's own right sidebar IS the Files panel on phones, and the host
-     pins it as a fixed full-bleed sheet: [data-sidebar-right-panel=fullscreen]
-     carries position:fixed; inset:0 and no inset of its own (the host CSS
-     never mentions safe-area at all). Its top row - the tab strip holding the
-     tab label, the + button and the Split / Exit-fullscreen pair at the right
-     edge - therefore sat UNDER the status bar: measured at 390x844 with the
-     panel open, the strip is [0,0,390,38] and the phone's status bar owns the
-     top of the screen. The frame's own safe-area padding cannot reach it: a
-     fixed element's containing block is the viewport, not the frame's padding
-     box. Taking the inset as padding keeps the panel's own --dsw-alias-bg-base
-     covering the whole viewport (no seam behind the status bar) and drops the
-     entire row below it, with the right-hand buttons still on the right edge.
-     ONLY the fullscreen form: the host's docked form (measured at 820x1180 -
-     form=push, position:absolute, 365px right-anchored) has the frame's
-     padding box as its containing block, so it already starts below the
-     status bar; padding it too would add the inset a second time. A host
-     generation that renames the form value should fail the probe loudly
-     instead of silently double-padding. The rule lives in the mobile branch,
-     so desktop keeps the host layout. */
+  /* Fullscreen Files panel is position:fixed; inset:0 with no safe-area of
+     its own, so its top tab strip sits under the status bar. Frame padding
+     cannot reach a viewport-fixed element — apply safe-area as padding-top
+     on the panel only. Skip the docked (push) form: it already lives in the
+     frame padding box and would double-pad. */
   [data-sidebar-right-panel="fullscreen"] {
     padding-top: env(safe-area-inset-top, 0px) !important;
   }
 
-  /* prefers-reduced-motion: the drawer's .28s slide is motion; drop it
-     (audit S2 2026-08-27 — the old reduce block only covered the settings
-     sheet and its mask). Same idiom as the animation:none blocks below. */
+  /* prefers-reduced-motion: drop the drawer's .28s slide (same idiom as the
+     animation:none blocks below). */
   @media (prefers-reduced-motion: reduce) {
     [data-mobile-nav="frame"] > :first-child {
       transition: none !important;
@@ -246,20 +219,10 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
     white-space: nowrap !important;
   }
 
-  /* Message tooltip bubbles (copy / feedback labels, message-row hover
-     bubbles) are redundant on touch: the icon already flips to a checkmark.
-     Suppress only inside the actions row — the fork's original scope. On
-     this host (0.1.1-rc.2) NO tooltip renders as a visible bubble: the copy
-     label is a visuallyHidden span and no client-ui package emits
-     role="tooltip". The user message bubble (Sixlwa_bubble since the host moved
-     it to dsh-client-ui-chat) and the goal
-     bubble (oRe1gG_bubble) live in _userStack/_row, NOT in _actions — the
-     previously unscoped selector hid every user message on touch devices
-     (2026-09-06 live regression). role="tooltip" stays globally suppressed:
-     genuine ARIA tooltips are exactly what the sticky-residue fix targets,
-     and nothing legitimate carries the role today. The actions-row arm
-     re-activates by itself when a host version renders tooltip labels
-     inline in the actions row (DSH 0.1.2 shape). */
+  /* Touch: suppress action-row tooltip bubbles (icons already flip to a
+     check). Keep scope on _actions — unscoped _bubble hid user/goal message
+     bubbles in _userStack/_row. role="tooltip" stays globally suppressed for
+     sticky-residue cleanup. */
   @media (hover: none), (pointer: coarse) {
     [data-phase] [role="tooltip"],
     [data-phase] [class*="_actions"] [class*="_bubble"] {
@@ -828,11 +791,8 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
     opacity: 0.38;
     cursor: default;
   }
-  /* The hidden input[type=file] this control triggers only exists on
-     0.1.6-alpha.2+ hosts (the rc generation's intake is paste/drop only),
-     while the host renders the input.left seat on both generations. Hide the
-     control wherever the host has no file input for it to trigger — its click
-     would otherwise be a permanent silent no-op there (review 2026-09-19). */
+  /* Hide the file-upload control when the host has no input[type=file]
+     (rc hosts are paste/drop only); otherwise the click is a silent no-op. */
   [data-composer-card]:not(:has(input[type=file])) [data-mobile-nav="file-upload"] {
     display: none !important;
   }
@@ -866,31 +826,18 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
      words; the one tenant that yields width when a phone runs out of it is
      the background-job trigger's verbose label ("1 background job running"),
      while Files keeps its hit area. */
-  /* Both !important flags are load-bearing. The host's session-controller sheet
-     ships [data-dsh-frame] [data-dsh-responsive-part="conversation-header"] with
-     padding-left: 60px !important under (max-width: 768px), so a plain
-     declaration here loses however specific it is: measured 2026-09-13 at
-     390px, the computed padding-left stayed 60px and the title still began at
-     x=100 with our rule present, matching and later in source order. The value
-     is 0 because our own toggle already occupies that left seat (painted at
-     x=8-36), so the host reservation is pure dead space on a phone. */
+  /* !important is required: the host sets conversation-header
+     padding-left: 60px !important under ≤768px. Our toggle already owns the
+     left seat, so reclaim that dead space with padding-left: 0. */
   [data-mobile-nav="frame"] [data-phase] header {
     padding-left: 0 !important;
     padding-right: 8px !important;
     position: relative !important;
   }
-  /* The hero phase's empty header must stay hidden on phones. The host hides
-     it via the headerHidden class at (0,1,0), but its own session-controller
-     sheet re-shows the conversation header as a grid at <=768px —
-     [data-dsh-frame] [data-dsh-responsive-part="conversation-header"] with
-     display grid at (0,2,0) — and that beats the hide on the very element
-     carrying both classes. Result measured 2026-09-19 at 390px: an empty 85px
-     header paints only its 1px border-bottom (--dsw-alias-border-l3) as a stray
-     gray hairline under the status bar (pixel-scanned at y=84-85,
-     rgb(224,224,224)); desktop keeps display none and no line. Our (0,3,1)
-     re-hide needs no !important: the grid rule's display is a normal
-     declaration and our style tag loads last. The header carries no children in
-     hero (drawer entry is the FAB), so hiding it frees the dead 85px too. */
+  /* Keep the hero empty header hidden on phones. Host headerHidden loses to
+     the session-controller grid re-show at ≤768px; our (0,3,1) re-hide wins
+     without !important (sheet loads last) and removes the stray bottom
+     border hairline under the status bar. */
   [data-mobile-nav="frame"] [data-phase] header[class*="_headerHidden"] {
     display: none;
   }
@@ -901,28 +848,14 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
   [data-mobile-nav="frame"] [data-phase] header[class*="headerBlank"] {
     display: none;
   }
-  /* Header popovers resolve against the header, not against their 28px flow
-     box. 0.1.5's background-job chip anchors its menu with
-     position:absolute; top:calc(100% + 5px) inside .QsffPG_root
-     {position:relative} — a 28px-tall chip — so the menu was laid out at
-     x=-16 (our right:8px resolved against that 156px chip root) and then
-     clipped twice: by our own overflow:hidden on the chip root and by the
-     host's [data-dsh-responsive-part="session-title-cluster"]
-     {overflow:hidden}. The chip still reported aria-expanded=true with
-     nothing painted and nothing hit-testable: measured 2026-09-14 at 390px,
-     menu rect [-16,49,336,40], elementFromPoint at its centre returned the
-     view tabs row. A positioned header plus a static chip root puts the same
-     menu at [46,77,336,73] — inside the viewport, its rows hit-testable, and
-     an outside tap still dismisses it (menus 1 -> 0). On 0.1.6-alpha.2 the
-     chip leaves the flow entirely (absolute, in the gated block below), and
-     this rule's higher specificity ((0,6,2) vs the new (0,4,1)) would pin it
-     static there too — so it is excluded on alpha.2 hosts via :not(:has(...))
-     and keeps governing rc hosts (review 2026-09-19).
-     BOTH halves are load-bearing: forcing the chip root static without
-     positioning the header moves the containing block out to the frame, and
-     the menu lands at x=8 y=849 — past the 844px viewport (A/B 2026-09-13).
-     Scoped to the header actions slot, so the subagent lineage root inside
-     the crumbs keeps its own anchored, fixed-position menu. */
+  /* Header popovers must resolve against the positioned header, not the
+     28px chip root — otherwise the menu clips off-screen / under overflow.
+     Force chip roots in headerActions to position:static. Exclude alpha.2
+     hosts (:not(:has(_headerLeading))) where the chip is already absolute
+     and this higher-specificity rule would fight that. Both halves load-
+     bearing: static chip without a positioned header moves the containing
+     block to the frame and the menu leaves the viewport. Scoped to
+     headerActions so lineage menus in crumbs stay fixed-anchored. */
   [data-mobile-nav="frame"] [data-phase] header:not(:has([class*="_headerLeading"])) [class*="_headerActions"] [class*="_root"]:not([class*="_switcherRoot"]):has(> button[class*="_trigger"]) {
     position: static !important;
   }
@@ -932,9 +865,8 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
      while the title starts at 40). Give it the same left inset as the toggle so
      the two rows read as one column. */
   /* ---------- Phone-only header chrome tighten (≤767px + coarse) ----------
-     Values measured at 360×754 (tabs margin, underline, title row auto).
-     Tablet 768–1023 keeps upstream mobile layout (same split as the DSHA
-     preset block at file end). Net: header ~77→67px. */
+     Tighten tabs margin/underline and title-row height. Tablet 768–1023
+     keeps upstream mobile layout (same split as the DSHA preset block). */
   @media (max-width: 767px) and (pointer: coarse) {
     [data-mobile-nav="frame"] [data-phase] header [class*="wSkVaW_tabs"] {
       padding-left: 8px !important;
@@ -968,13 +900,8 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
       align-self: flex-end !important;
     }
   }
-  /* NOTHING extra here on purpose. The header's own padding is already forced
-     to 0 above, and the title row carries padding-left:40px of its own, so the
-     title lands at x=40 - the toggle's right edge (36) plus 4px. A negative
-     margin added on top of that over-corrected and pulled the title off the
-     left edge (measured 2026-09-13: crumb x=20, and the string's first glyph
-     painted partially outside the viewport), so the reclaim lives in exactly
-     one place: the header padding. */
+  /* Title inset lives only in header padding + the title row's own
+     padding-left:40px. Extra negative margin over-corrects past the left edge. */
 
   [data-mobile-nav="frame"] [data-phase] header > :first-child {
     display: flex !important;
@@ -1001,19 +928,10 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
     top: 12px !important;
     z-index: 2 !important;
   }
-  /* The files opener is pinned to the header's right corner, mirroring the
-     directory toggle on the left (same 8px edge, same 12px seat). In flow it
-     can never reach that corner: the host reserves the last 44px of the title
-     cluster for a utilities seat that is EMPTY on mobile - measured at 390px,
-     headerUtilities sits at x=374 with width 0 while the title cluster carries
-     padding-right: 44px - so the button stopped at x=300..328 and left 62px of
-     bare header to its right (2026-09-14 phone-side report: the opener is not
-     pinned to the top-right corner). Absolute positioning also returns its
-     28px of flow width to the title lane, and the containing block is the same
-     one the toggle resolves against, so both controls shift together with the
-     frame's safe-area padding. The 44px reservation itself is trimmed to the
-     28px band this button actually paints in the compact-rows block below, so
-     the title lane keeps the difference. */
+  /* Pin the files opener to the header's right corner (mirror of the left
+     toggle). In flow the empty utilities seat keeps it short of that corner;
+     absolute positioning reaches right:8 / top:12 and returns its width to
+     the title lane. */
   [data-mobile-nav="files"] {
     position: absolute !important;
     right: 8px !important;
@@ -1044,15 +962,9 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
     text-overflow: ellipsis;
     white-space: nowrap !important;
   }
-  /* Mode label: keep the icon AND the words. On a phone this chip is the only
-     mode switcher there is, so its text is not the surplus it was once
-     treated as: the longest preset name measured needs 121px including the
-     18px icon seat, while the old cap min(22vw, 220px) allowed just 85.8px at
-     390px — the text was clipped at every phone width even before the
-     crowding rules below pinned it to the icon alone (2026-09-14 phone
-     report: the mode label showed only its glyph). 38vw keeps the label whole
-     from 320px up and still lets it ellipsize before the title on wider
-     screens. */
+  /* Mode label: keep icon and words (only mode switcher on phone). Cap at
+     38vw so long preset names stay readable from 320px up and still yield
+     to the title on wider screens. */
   [data-mobile-nav="frame"] [data-phase] header [class*="_label"]:has(> svg) {
     order: 1;
     flex: 0 1 auto;
@@ -1080,19 +992,10 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
      [class*="_root"] and exclude the switcher root ([class*="_switcherRoot"])
      so only the count/job roots get pinned (the switcher must stay shrinkable
      so its own title can ellipsize). */
-  /* Pinned (flex 0 0 auto) with a max-width cap. A shrinkable chip is squeezed
-     below its content and the count reads as clipped or overwritten (the
-     2026-08-22 report), while a bare max-content pin eats the session title,
-     whose flex basis is 0: measured 2026-09-13 at 320px, the crumb went 68px
-     -> 16px and the painted title was EMPTY while the chip kept its full text.
-     Pinned + capped + the crumbs min-width floor above is what holds both —
-     the title ellipsizes, the count keeps its words, and the hit area stays
-     one inline-flex button.
-     NOTE: the popover containment lives with the header rules above, which
-     force this root position:static. That only works together with the
-     positioned header: static on its own moved the containing block out to
-     the frame and the menu landed at x=8 y=849, past the 844px viewport
-     (A/B 2026-09-13). */
+  /* Pin status chips (flex 0 0 auto) with a max-width cap. Shrinkable chips
+     clip the count; uncapped max-content eats the flex-basis-0 title.
+     Popover containment relies on the positioned header + static chip root
+     above — static alone moves the containing block to the frame. */
   [data-mobile-nav="frame"] [data-phase] header [class*="_root"]:not([class*="_switcherRoot"]):has(> button[class*="_trigger"]) {
     order: 2;
     flex: 0 0 auto;
@@ -1209,34 +1112,17 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
       min-height: 26px !important;
     }
   }
-  /* The title cluster reserves its last 44px for that empty utilities seat.
-     The lane's right edge must stay clear of the Files opener's HIT BOX,
-     otherwise the opener eats the trailing chips' taps. The pre-2026-09-22
-     value (26px, a width optimisation) only cleared at the 390px test width:
-     measured at 360x754 (dpr 4) the Agent Team chip ran to x=334 while the
-     opener's 36px box started at x=316 — an 18px overlap, so tapping the
-     chip's tail opened the Files panel. The reference phone UI shows the lane
-     ending at ~314 with the opener box at 316..352, i.e. the full 44px seat
-     plus 2px of breathing room, so restore that instead of narrowing the
-     opener: 46px clears the 36px box at right:8 by 2px at every width. */
+  /* Keep title-cluster padding-right at 46px so trailing chips clear the
+     Files opener's 36px hit box at right:8 (narrower padding overlapped
+     and stole taps from chips). */
   [data-mobile-nav="frame"] [data-phase] header [class*="wSkVaW_titleCluster"] {
     padding-right: 46px !important;
   }
-  /* Header crowding on narrow phones.
-     Three tenants want the same row: the session title, the mode chip and the
-     status chips. The status chips are the only ones whose words are
-     redundant — the background-job chip keeps its state dot, its chevron and
-     its aria-label, and the popover above now lists the jobs — so the job
-     trigger's verbose label ("1 background job running") is what yields. The
-     mode chip is the only mode switcher a phone has and the title is the only
-     session identity, so both keep their words and the title ellipsizes
-     instead (measured 2026-09-14 at 390px with a lineage chip present: after
-     this the mode label keeps 101px of text and the crumb 135px).
-     The lineage root (dsh-client-ui-subagent) sits in the crumbs for BOTH
-     running and idle descendants, so the guards below key on that root rather
-     than the transient running-state dot — otherwise the row would reflow the
-     moment agents go idle. Match roots with [class*="_root"] (the real class
-     carries a trailing space; [class$="_root"] matches nothing). */
+  /* Header crowding on narrow phones: yield the job trigger's verbose label
+     first (dot/chevron/aria-label + popover still convey state). Keep mode
+     words and title; title ellipsizes. Gate on the lineage root in crumbs
+     (present for running and idle), not the transient running-state dot.
+     Match [class*="_root"] — the live class has a trailing space. */
   @media (max-width: 440px) {
     /* The job label is the single widest tenant of the actions lane and the
        only one whose text is already carried elsewhere (aria-label + popover).
@@ -1284,18 +1170,11 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
     max-height: min(420px, calc(100dvh - 120px));
   }
 
-  /* --- 0.1.6-alpha.2 session-header adaptation (audited on a real device) ---
-     The 16-item reconciliation in docs/upstream/2026-09-19-mobile-header-0.1.6-adaptation.md,
-     landing the 14 items whose anchors exist in 0.1.6-alpha.2 host builds. Two preset items
-     (#6/#7) are deliberately omitted: they anchor on .dsha-preset-header-anchor, a marker
-     that exists only in the DSHA build, so they would be dead rules here.
-     GENERATION GATING: only _headerLeading/_crumbCurrent/_crumbSeg/_headerCorner are
-     alpha.2-only classes — every other anchor below (_titleCluster/_crumbs/_headerActions/
-     _headerUtilities/tablist/QsffPG_/ZKlsPq_ and the :first-child chains) also exists on
-     0.1.5-rc hosts, where these rules would silently re-tune geometry the older rules
-     measured (review 2026-09-19). Every selector therefore carries
-     header:has([class*="_headerLeading"]): the whole block is dead on pre-alpha.2 hosts and
-     the rc-generation rules keep governing there unchanged. */
+  /* --- 0.1.6-alpha.2 session-header adaptation ---
+     See docs/upstream/2026-09-19-mobile-header-0.1.6-adaptation.md. Omit
+     DSHA-only preset anchors. Gate every selector with
+     header:has([class*="_headerLeading"]) so shared class names do not
+     re-tune geometry on pre-alpha.2 / rc hosts. */
   [data-mobile-nav="frame"] [data-phase] header:has([class*="_headerLeading"]) {
     /* Drop host header padding-top / title-row pad — they stack on safe-area
        and read as empty chrome. */
@@ -1828,30 +1707,11 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
   [aria-modal="true"]:has(> :first-child > :last-child > button):not(:has([role="navigation"])):not(:has([class*="ZuhsRW"])):not([data-shortcut-modal="shortcuts"]) > :first-child > :first-child {
     display: none !important;
   }
-  /* The tab strip stays clear of the toolbar: the toolbar (the close ✕ on
-     this host — the config-file button is hidden below) is absolutely
-     positioned over the nav row's right end (#105 A' — it stays at its
-     React home in the content column; see below). The strip is pinned to
-     ONE horizontal scroller: flex-wrap:nowrap + overflow-x:auto.
-     2026-09-25, rc.2 portal regression: 0.1.7-rc.1 rendered this sheet in
-     place (inside the app frame); rc.2 wraps it in
-     createPortal(..., document.body) — diffed rc.1 vs rc.2 bundles, no
-     createPortal before — so every [data-mobile-nav="frame"]-scoped
-     dialog rule (the frame-era single-row scroller in compat.css among
-     them) went dead the moment the overlay became a direct body child.
-     What survived was this rule's own flex-wrap:wrap, which had been
-     losing to the host's nowrap scroller and now had nothing to lose to:
-     the cells broke into uneven rows (3/2/3/2/1 at 402px) whose first row
-     slid under the 138px toolbar (config-file button + close) — the
-     settings-sheet half of the owner's 2026-09-25 report. Pinning the
-     scroller here makes the geometry host-generation independent again;
-     the cells keep flex-shrink:0 + nowrap (rule below), the strip
-     scrolls, and the hairline scrollbar is the affordance. The scroller
-     VIEWPORT stops short of the toolbar zone: margin-right = toolbar
-     width (36: the 32px round close + 4px) + 6px gap (measured
-     2026-09-24) reproduces the reparent-era scroller geometry (its box
-     ended 6px short of the toolbar). The strip must be anchored by its
-     class. */
+  /* Settings tab strip: single-row horizontal scroller (nowrap + overflow-x)
+     that clears the absolute toolbar on the right. Frame-scoped dialog rules
+     die on rc.2+ body-portaled sheets, so pin the scroller here. margin-right
+     42px (= 36px toolbar + 6px gap) keeps cells out from under the close
+     control. */
   [aria-modal="true"]:has(> :first-child > :last-child > button):not(:has([role="navigation"])):not(:has([class*="ZuhsRW"])):not([data-shortcut-modal="shortcuts"]) > :first-child [class*="_navList"] {
     flex: 1 1 auto;
     min-width: 0;
@@ -1894,35 +1754,12 @@ export const LAYOUT_CSS = `/* ---------- mobile-only layout (narrow viewport AND
     height: 14px !important;
     flex: none !important;
   }
-  /* Content toolbar (close, plus the config-file button on hosts that
-     render one): pinned over the nav row's right end, flush right.
-     #105 A' — the toolbar stays at its React home (the content column's
-     direct child) and is absolutely positioned against the dialog; the
-     dialog is position:absolute itself, so it is the containing block
-     and no new one is introduced. Constants measured 2026-09-24 (CDP,
-     393px): the reparented toolbar — whose visual this replaces — sat
-     at in-dialog dy=10 / fromRight=12, hence top 10px / right 12px.
-     Out of flow, the toolbar's own row disappears and the options area
-     starts right under the nav row; the navList's scroll viewport stops
-     short of the toolbar with margin-right = toolbar width (36: the 32px
-     round close + 4px) + 6px gap (measured). Children carry official
-     auto-margins
-     that would defeat flex-end, so neutralize them. The close button
-     gets a round tappable base so it reads as its own control, not
-     part of the outline button.
-     Anchored structurally, not by class substring: a bare [class*="_header"]
-     also matches every plugin settings card header in the options area —
-     the official Plugins config cards (YyYd_a_header) and the dsh-web-ui-all
-     group cards (Kwoi6G_header / Jh0q7G_header / rUBhvW_header; the bpnj3G_/jmhvDG_
-     siblings were renamed upstream in dsh-web-all 0.3.20, verified 2026-09-18), all sharing the upstream template text-align:left,
-     gap:12px, padding:14px 16px). The old broad anchor right-aligned their
-     text, gutted the padding and painted a 32px gray circle behind the
-     chevron (2026-09-05 sweep: 8 bleeding headers). The toolbar's one
-     structural home is the content column's direct child (the panel's
-     :last-child); the post-reparent nav-row home died with the
-     settings-toolbar-reparent task. Card headers live deeper — inside
-     the options scroll area — and match neither, so no per-plugin hash
-     guards are needed. */
+  /* Content toolbar (close ± config-file): absolute top/right 10/12 over
+     the nav row (#105 A′ — stay at React home in the content column).
+     Anchor structurally as the panel's :last-child > _header; a bare
+     [class*="_header"] also matched plugin card headers in the options
+     area and broke their layout. Neutralize child auto-margins that would
+     defeat flex-end. */
   [aria-modal="true"]:has(> :first-child > :last-child > button):not(:has([role="navigation"])):not(:has([class*="ZuhsRW"])):not([data-shortcut-modal="shortcuts"]) > :last-child > [class*="_header"]:not([class*="_headerActions"]) {
     position: absolute;
     top: 10px;
