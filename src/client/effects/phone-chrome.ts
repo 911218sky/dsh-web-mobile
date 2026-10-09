@@ -747,9 +747,9 @@ export function installOverlayInteractions(ctx: ClientContext): void {
       }
       // A classified swipe already toggled the drawer; never let its
       // synthetic tap also close it / navigate a row (gesture-guard).
-      // isStrokeLocked: a stroke axis-locked mid-swipe (audit S0) — the
-      // consume marks do not exist until the gesture layer's own pointerup,
-      // which runs AFTER this handler on the same release event.
+      // isStrokeLocked covers mid-swipe axis lock: consume marks do not
+      // exist until the gesture layer's own pointerup, which runs after
+      // this handler on the same release event.
       if (isStrokeLocked() || consumeIfGestured(event)) return
       // The backdrop keeps its own listener, but the third-party mobile shim
       // stops click propagation at the frame for anything outside the drawer
@@ -768,10 +768,10 @@ export function installOverlayInteractions(ctx: ClientContext): void {
     const onDrawerPointerUp = (event: PointerEvent): void => {
       // A classified swipe must not arm the nav observer or toggle again
       // (gesture-guard): the drawer already toggled, and the row under the
-      // stroke was never a tap. isStrokeLocked covers the release event of
-      // a stroke locked mid-swipe but not yet classified — this handler
-      // runs before the gesture layer's own pointerup (audit S0/S1: without
-      // it the host toggled first and the gesture toggled back, net zero).
+      // stroke was never a tap. isStrokeLocked covers a mid-swipe lock not
+      // yet classified — this handler runs before the gesture layer's own
+      // pointerup; without it the host toggles first and the gesture
+      // toggles back (net zero).
       if (isStrokeLocked() || consumeIfGestured(event)) return
       if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
       const pressed = pressFired

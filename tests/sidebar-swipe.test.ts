@@ -366,14 +366,14 @@ test('gesture-guard: ancestor-chain coverage with upTo', () => {
   assert.equal(consumeIfGestured({ target: root }), true)
 })
 
-test('gesture-guard: axis-lock flag yields the host before any consume mark exists (audit S0)', () => {
+test('gesture-guard: axis-lock flag yields the host before any consume mark exists', () => {
   // Host document-capture pointerup runs before the gesture layer's, so
   // consume marks are not set yet. Axis lock (written on pointermove) is the
   // race-free yield so the host does not toggle before classify (dead gesture).
   assert.equal(isStrokeLocked(), false, 'idle: lock clear')
   markStrokeLocked() // what tryLock() does on horizontal dominance
   const { child } = makeChain()
-  assert.equal(consumeIfGestured({ target: child }), false, 'no consume mark yet — the S0 race window')
+  assert.equal(consumeIfGestured({ target: child }), false, 'no consume mark yet — the race window')
   // The host's first-line check on the same release event:
   assert.equal(
     isStrokeLocked() || consumeIfGestured({ target: child }),

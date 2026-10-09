@@ -930,10 +930,9 @@ function tryLock(event: PointerEvent): boolean {
     markStrokeLocked()
     return true
   }
-  // Publish the lock to the host handlers (see gesture-guard.ts): they run
-  // EARLIER in this release event's capture phase, before endStroke writes
-  // any consume mark — the flag is their only ordering-proof yield signal
-  // (audit S0/S1).
+  // Publish the lock to host handlers (gesture-guard.ts): they run earlier
+  // in this release event's capture phase, before endStroke writes any
+  // consume mark — the flag is their only ordering-proof yield signal.
   markStrokeLocked()
   startFollow()
   return true
