@@ -39,23 +39,18 @@ test('overlay markers exist in source and stylesheet', () => {
 })
 
 test('placeOverlay centers the host on its slot (issue #140 alignment)', () => {
-  // The 20px ring top-aligned on its 16px reserve hung its center 2-4px
-  // below the neighbouring keys (measured 2026-09-29: ring center y=793 vs
-  // model key 791 / send key 789, reported as「不与其他小UI对齐」); the
-  // overlay must center on the reserve box. Same-height overlays (the
-  // 0.1.5/0.1.6 TPS text) are unaffected by the centering.
+  // A taller ring top-aligned on its reserve sits below neighbouring keys;
+  // the overlay must center on the reserve box. Same-height overlays (TPS
+  // text) are unaffected.
   assert.match(src, /const hostRect = host\.getBoundingClientRect\(\)/)
   assert.match(src, /const top = box\.top - base\.top - container\.clientTop - \(hostRect\.height - box\.height\) \/ 2/)
 })
 
 test('the enlarged ring keeps a visible track (issue #140 spinner look)', () => {
-  // 2026-09-29 acceptance: the ring svg was enlarged 16 -> 24px, and the
-  // host track (12% black) became invisible next to the thick fill arc —
-  // the meter read as a broken loading spinner. The track must be
-  // deepened so the donut is a complete ring. Issue #142: the deepened
-  // track must follow the theme — 25% of the label token via color-mix
-  // (label-primary is near-black light, near-white dark); a literal 25%
-  // black vanishes on the dark theme and the spinner look returns there.
+  // Enlarged ring (16→24px) needs a deeper track so the donut reads as a
+  // complete ring, not a broken spinner. Issue #142: track color must follow
+  // the theme via color-mix on the label token — a literal black vanishes
+  // on dark theme.
   assert.match(
     css,
     /\[data-mobile-nav="stats-ring"\]\s*\[class\*="_track"\]\s*\{[^}]*stroke:\s*color-mix\(in srgb,\s*var\(--dsw-alias-label-primary,\s*#000\)\s*25%,\s*transparent\)/,

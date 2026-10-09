@@ -2,55 +2,32 @@ import type { ClientContext } from '../client-context.ts'
 import { installMobileEffect } from './phone-chrome.ts'
 
 /**
- * 团队 chip「再点关闭」的接管（2026-09-23，对账 0.1.7-rc.1）。
+ * Makes a second tap on the agent-team chip close the open panel.
  *
- * 症状：点头部那颗智能体团队图标能打开面板，**再点同一颗关不掉**，必须点面板
- * 四周（或按 Escape）才关。要求的行为：单击打开、再单击关闭。
+ * Host trigger onClick only opens (or focuses when already open); close is
+ * outside-pointer dismiss or Escape. On touch, re-tapping the chip therefore
+ * never toggles closed.
  *
- * 真根因（读宿主源码得出，本轮真机复现）：
- * `dsh-experimental-client-ui-agent-team/lib/client.js` 的触发器 onClick 只处理
- * 「开」，开态时改为聚焦面板 —— 它自己**永远不关**：
- *
- *   onClick: () => {
- *     cancelHoverChange()
- *     pinnedRef.current = true
- *     if (!open) changeOpen(true)
- *     else panelRef.current?.focus()   // 开着就只 focus，不 toggle
- *   }
- *
- * 关闭路径只有两条：`ui-primitives` 的 useDismissOnOutsidePointer（document 上的
- * pointerdown，靶心在 root/panel 之外即 setOpen(false)）与面板内注册的 Escape
- * keydown。桌面靠 hover 开合，这个「点了只 pin 不 toggle」不成问题；手机上就成了
- * 「点了关不掉」。
- *
- * 修法（替用户把「点四周」这件事做掉，宿主两条关闭路径原样保留）：
- *   pointerdown 捕获阶段：触发器自报 aria-expanded="true" 且宿主的 body portal
- *   面板在场时，记下这一击；
- *   click 捕获阶段：同一触发器 → 先向 document.body 派发一次合成 pointerdown
- *   （靶心在 root 与面板之外 ⇒ 命中宿主自己的 outside-dismiss ⇒ 真关闭），
- *   再 stopPropagation 掉这一击 click —— 否则宿主的 onClick 还会在旧闭包里走
- *   else 分支去 focus 面板。
- *
- * 为什么先派发再吞 click（顺序不可换）：宿主 dismiss 是 document 上的 bubble
- * 监听，我们处在 capture 阶段，同步派发即同步生效；而 click 一旦放过去，宿主的
- * onClick 会看到尚未冲刷的 open=true 并执行 focus。
- *
- * 开态读 aria-expanded 而不是「点在不在面板里」：pointerdown 阶段 React 尚未重渲染，
- * 读到的是这一击之前的真实状态（与 workspace-chip-toggle 同一条判据）。
+ * When the trigger reports aria-expanded="true" and the body-portal panel is
+ * present, arm on pointerdown; on the matching click, synthesize a body
+ * pointerdown (outside root/panel → host dismiss) then stopPropagation so the
+ * host onClick cannot focus the panel. Order matters: dismiss must run before
+ * the host sees the click. Read open state from aria-expanded at pointerdown
+ * (pre-render), matching workspace-chip-toggle.
  */
 
-/** 团队 chip 根：宿主 agent-team 实验插件的稳定标记。 */
+/** Agent-team chip root (stable host marker). */
 const ROOT_SELECTOR = '[data-team-action]'
 
-/** 触发器：根的直接子按钮（aria-haspopup 是 dialog，不是 menu）。 */
+/** Direct child trigger button (aria-haspopup="dialog"). */
 const TRIGGER_SELECTOR = '[data-team-action] > button[aria-haspopup="dialog"]'
 
-/** 面板：宿主 portal 到 body、带稳定标记与 role="dialog"。 */
+/** Body-portal panel (stable marker + role="dialog"). */
 const PANEL_SELECTOR = '[data-team-panel]'
 
 export function installTeamChipToggle(ctx: ClientContext): void {
   installMobileEffect(ctx, 'dsh-web-mobile: team chip toggle', () => {
-    /** 这一击之前自报「面板开着」的那颗触发器（否则 null）。 */
+    /** Trigger that reported expanded before this stroke; otherwise null. */
     let armed: Element | null = null
 
     const triggerFrom = (target: EventTarget | null): Element | null =>
@@ -70,8 +47,7 @@ export function installTeamChipToggle(ctx: ClientContext): void {
       const trigger = armed
       armed = null
       if (trigger === null || triggerFrom(event.target) !== trigger) return
-      // 「点四周」这一步必须用 pointerdown：宿主的 dismiss 只监听 pointerdown。
-      // 靶心选 document.body —— 它既不在 root 内、也不在面板内，是最省事的真外部。
+      // Host dismiss listens for pointerdown only; body is outside root and panel.
       document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }))
       event.stopPropagation()
     }

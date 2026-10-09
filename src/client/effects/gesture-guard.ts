@@ -1,41 +1,30 @@
 /**
- * Gesture-consumption contract between the sidebar swipe layer and every
- * other document-level listener that would otherwise treat the release as a
- * plain tap (the overlay's drawer-close click/pointerup handlers and the
- * FAB / backdrop element listeners).
+ * Gesture-consumption contract between the sidebar swipe layer and other
+ * document-level listeners that would otherwise treat the release as a tap
+ * (drawer-close click/pointerup, FAB / backdrop listeners).
  *
- * Two independent signals, because they answer questions at different times:
- * - the axis-lock flag (`markStrokeLocked` at tryLock, i.e. during
- *   pointermove) tells a host handler running EARLIER in the same release
- *   event's capture phase that this pointerup is a swipe release, not a tap;
- * - the consume marks (`markGestureConsumed` at the gesture layer's own
- *   pointerup, after classification) cover the events that come AFTER the
- *   release.
+ * Two signals at different times:
+ * - axis-lock (`markStrokeLocked` at tryLock / pointermove) tells an earlier
+ *   capture-phase handler on the same pointerup that this is a swipe release,
+ *   not a tap;
+ * - consume marks (`markGestureConsumed` at the gesture layer's pointerup
+ *   after classification) cover events that follow the release.
  *
- * When the gesture layer classifies a stroke as a real swipe it calls
- * `markGestureConsumed(target, windowMs, upTo)`; any later listener that
- * calls `consumeIfGestured(event)` on the same stroke returns true and bails
- * out, so a swipe can never toggle the drawer twice or navigate a session
- * row — including the synthetic click the browser dispatches after the
- * stroke (its target is the release point or an ancestor of it, which is why
- * the mark walks the ancestor chain up to `upTo`).
- *
- * Non-gesture taps leave both signals clear, so the host's own close / tap /
- * nav-arm logic keeps working untouched.
+ * After a classified swipe, later `consumeIfGestured(event)` callers bail so
+ * the stroke cannot double-toggle the drawer or navigate a session row —
+ * including the browser's synthetic click (mark walks ancestors up to `upTo`).
+ * Non-gesture taps leave both signals clear.
  */
 
 /** Marked targets with their expiry timestamp (monotonic performance.now). */
 const consumed = new Map<EventTarget, number>()
 
 /**
- * True while the live stroke is axis-locked horizontal. Unlike the consume
- * marks (written at the gesture layer's OWN pointerup, after
- * classification), this flag is written at tryLock time — during
- * pointermove, strictly before any pointerup can fire — so a host handler
- * registered earlier in the capture phase can consult it on the same
- * release event without losing the race (audit S0/S1, 2026-08-27): while
- * the flag is up, the pointerup it is seeing is a swipe release, never a
- * tap, classified or not.
+ * True while the live stroke is axis-locked horizontal. Unlike consume marks
+ * (written at the gesture layer's own pointerup after classification), this
+ * flag is set at tryLock during pointermove — before any pointerup — so a
+ * host handler registered earlier in the capture phase can yield on the same
+ * release event without racing the consume marks.
  */
 let strokeLocked = false
 

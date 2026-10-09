@@ -1,37 +1,20 @@
 /**
- * Transparent response compression for large JSON payloads.
+ * Transparent gzip/brotli for large JSON responses.
  *
- * Long sessions make `session.history` responses megabytes of JSON; on a
- * phone that is a slow, data-hungry transfer. This module patches
- * `http.ServerResponse.prototype` (process-wide, restored on dispose) so any
- * JSON response the host serves — the harness's own `/api/*` routes included —
- * is compressed when the client accepts it:
+ * Patches `http.ServerResponse.prototype` (process-wide; restored on dispose)
+ * so host JSON — including `/api/*` — compresses when the client accepts it:
+ * - Codec from `Accept-Encoding`: `br` (quality 6) preferred, else `gzip`.
+ * - Only JSON ≥ MIN_JSON_BYTES; other content types pass through unchanged.
+ * - `writeHead` is deferred until body size is known so `Content-Length`
+ *   matches; non-JSON calls the original `writeHead` immediately.
  *
- * - The client's `Accept-Encoding` picks the codec: `br` (brotli, quality 6)
- *   preferred, `gzip` fallback.
- * - Only JSON responses of at least MIN_JSON_BYTES are compressed; small
- *   JSON and every other content type (HTML, static assets, ZIP, SSE streams)
- *   pass through byte-identical with the original headers.
- * - The response header write is deferred until the body is known, so the
- *   decision (compress or not) is made on the actual size, and `Content-Length`
- *   always matches what is sent. Non-JSON responses call the original
- *   `writeHead` immediately and are never touched.
+ * Browser fetch decompresses transparently. SSE is left uncompressed.
  *
- * The browser's fetch decompresses transparently, so no client change is
- * needed. SSE (`text/event-stream`) is intentionally left uncompressed: it is
- * a continuous stream and the /api bridge never buffers it.
+ * Limitations (#80): deferred `write()` always returns true (no backpressure);
+ * buffered write callbacks fire once, in order, after the real `end()`.
  *
- * Known limitations (issue #80): while a response is deferred, write()
- * reports unconditional success (true) — the socket is untouched, so no
- * backpressure signal exists; buffered write() completion callbacks replay
- * fire-once, in order, right after the real end(), without error propagation
- * (the real flush cannot fail them individually).
- *
- * On dispose (plugin unload / hot-reload), in-flight deferred responses are
- * flushed uncompressed via a live Set (WeakMap alone is not iterable), then
- * the prototype methods are restored.
- *
- * Ported from community fork wzxmt-zhc/dsh-web-mobile (v2.5.0).
+ * On dispose, flush in-flight deferred responses uncompressed (via live Set;
+ * WeakMap is not iterable), then restore prototype methods.
  */
 import { brotliCompressSync, constants as zlibConstants, gzipSync } from 'node:zlib'
 import { ServerResponse as NodeServerResponse } from 'node:http'
@@ -72,12 +55,7 @@ function pickEncoding(res: ServerResponse): 'br' | 'gzip' | null {
   return null
 }
 
-/**
- * Find a header value regardless of the caller's key casing. The patch sees
- * the RAW writeHead argument (before Node lowercases), and HTTP header names
- * are case-insensitive — a caller may pass `Content-Type` or `content-type`.
- * (Case-insensitivity fix ported from community fork wzxmt-zhc/dsh-web-mobile.)
- */
+/** Header lookup ignoring key casing (raw writeHead args before Node lowercases). */
 export function headerValue(headers: Record<string, string | number | string[]>, name: string): string | undefined {
   for (const key of Object.keys(headers)) {
     if (key.toLowerCase() === name) return String(headers[key])
@@ -165,8 +143,7 @@ function flushDeferredUncompressed(
  */
 export function installResponseCompression(): () => void {
   const proto = NodeServerResponse.prototype
-  // Capture the originals under the simple signatures the wrappers use; the
-  // real overloaded implementations are restored unchanged on dispose.
+  // Capture originals; overloaded impls are restored unchanged on dispose.
   const origWriteHead = proto.writeHead as (...args: unknown[]) => ServerResponse
   const origWrite = proto.write as (chunk: unknown, ...rest: unknown[]) => boolean
   const origEnd = proto.end as (chunk?: unknown, ...rest: unknown[]) => ServerResponse
@@ -181,7 +158,7 @@ export function installResponseCompression(): () => void {
     if (encoding === null) {
       return origWriteHead.apply(this, args as never) as ServerResponse
     }
-    // Hold the header write until the body size is known (see module doc).
+    // Defer header write until body size is known.
     deferred.set(this, { writeHeadArgs: args, headers, encoding, chunks: [], writeCallbacks: [] })
     liveDeferred.add(this)
     return this
@@ -190,9 +167,7 @@ export function installResponseCompression(): () => void {
   function patchedWrite(this: ServerResponse, chunk: unknown, ...rest: unknown[]): boolean {
     const pending = deferred.get(this)
     if (pending !== undefined) {
-      // Buffer the encoding with the chunk (a latin1 write must not be
-      // silently re-encoded) and keep the completion callback for a
-      // fire-once replay after the real end() (issue #80).
+      // Preserve encoding with the chunk; queue completion callbacks (#80).
       bufferChunk(pending, chunk, typeof rest[0] === 'string' ? rest[0] : undefined)
       for (const arg of rest) {
         if (typeof arg === 'function') pending.writeCallbacks.push(arg as () => void)
@@ -209,19 +184,14 @@ export function installResponseCompression(): () => void {
         ? origEnd.apply(this, rest as never) as ServerResponse
         : origEnd.apply(this, [chunk, ...rest] as never) as ServerResponse
     }
-    // `end(callback)`: the function is a completion callback, never body
-    // data — keep it out of the buffers and replay it at the real end().
+    // `end(callback)`: callback only — do not treat as body.
     const callbacks = (typeof chunk === 'function' ? [chunk, ...rest] : rest)
       .filter((arg) => typeof arg === 'function')
-    // `end(data, encoding)` and friends: the data is buffered above and the
-    // encoding is consumed by that buffering, so only the callbacks may be
-    // replayed — origEnd('utf8') would write the string as body data after
-    // the compressed payload (issue #78).
+    // Buffer data/encoding only; replaying encoding as body would corrupt (#78).
     if (chunk !== undefined && typeof chunk !== 'function') bufferChunk(pending, chunk, typeof rest[0] === 'string' ? rest[0] : undefined)
     const body = Buffer.concat(pending.chunks)
 
-    // Small or empty JSON: replay the ORIGINAL header write and body verbatim
-    // (no Content-Encoding, original Content-Length intact).
+    // Below threshold: original headers and body verbatim.
     if (body.byteLength < MIN_JSON_BYTES) {
       writeHeadWith(this, origWriteHead, pending, pending.headers)
       const ended = body.byteLength === 0
@@ -231,7 +201,7 @@ export function installResponseCompression(): () => void {
       return ended
     }
 
-    // Large JSON: compress and rewrite the length-bearing headers.
+    // Compress and rewrite length-bearing headers.
     const compressed = pending.encoding === 'br'
       ? brotliCompressSync(body, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: BROTLI_QUALITY } })
       : gzipSync(body, { level: 6 })
@@ -254,8 +224,7 @@ export function installResponseCompression(): () => void {
   proto.end = patchedEnd
 
   return () => {
-    // Snapshot before restoring prototypes so concurrent end() cannot race
-    // the flush through the patched path.
+    // Snapshot before restore so concurrent end() cannot race the flush.
     const inFlight = [...liveDeferred]
     if (proto.writeHead === patchedWriteHead) proto.writeHead = origWriteHead
     if (proto.write === patchedWrite) proto.write = origWrite

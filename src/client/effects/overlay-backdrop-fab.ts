@@ -3,9 +3,9 @@ import type { ReconcilerTask } from '../core/reconciler-core.ts'
 import type { PanelExit } from './panel-exit.ts'
 import { getFrame } from './phone-chrome.ts'
 
-/** Fade the CURRENT backdrop out (pointer-events off + opacity 0). Called by
+/** Fade the current backdrop out (pointer-events off + opacity 0). Called by
  * the gesture layer when a close commit starts animating, so the dimming
- * fades WITH the drawer's slide-out instead of vanishing after it. The
+ * fades with the drawer's slide-out instead of vanishing after it. The
  * element itself is removed later by the task's normal remove path (the
  * marker flip schedules it). */
 export function fadeOverlayOut(): void {
@@ -15,8 +15,7 @@ export function fadeOverlayOut(): void {
 let fadeHook: (() => void) | null = null
 
 /** Removal is deferred by one fade so the dimming eases out instead of
- * snapping (user request 2026-08-29 「背景黑色遮罩进行渐变动画」; the fade-IN
- * already existed as a mount animation). */
+ * snapping (fade-in already exists as a mount animation). */
 const BACKDROP_FADE_MS = 200
 
 /** The FAB's second face: an arrow, shown while a sidebar panel owns the main
@@ -34,10 +33,10 @@ const FAB_DRAWER_ICON =
 /**
  * @param t - `mobileNav` dictionary.
  * @param toggleSidebar - opens/closes the drawer.
- * @param panelExit - the sidebar-panel exit face (panel-exit.ts). The FAB is the
- *   screen's only control while a panel owns the main area — the header toggle
- *   does not render there — so it doubles as 「返回会话」. Null on a host that
- *   cannot select panels (rc.6), where it stays a plain drawer button.
+ * @param panelExit - sidebar-panel exit face (panel-exit.ts). While a panel owns
+ *   the main area the FAB is the only on-screen control (header toggle is gone),
+ *   so it doubles as back-to-conversation. Null when the host cannot select
+ *   panels (rc.6); then it stays a plain drawer button.
  */
 export function createOverlayTask(
   t: TranslateNS<'mobileNav'>,
@@ -49,29 +48,22 @@ export function createOverlayTask(
   let backdropRemoveTimer: number | null = null
   /** True while the backdrop carries our inline faded state. Guards the
    * restore branch: while a late close commit is animating, the marker is
-   * STILL open, so a plain open-branch restore would undo the pre-fade. */
+   * still open, so a plain open-branch restore would undo the pre-fade. */
   let faded = false
   const drawerOpen = (): boolean => {
     const frame = getFrame()
     if (frame === null) return false
-    // The user's call (2026-09-13): our drawer is the one users get, even on
-    // hosts that ship their own overlay drawer. The host's version measures
-    // 321px wide with z-index:1100 and, notably, NO full-screen backdrop at all
-    // (measured: the conversation stays hit-testable beside it), which is the
-    // behaviour the phone owner rejected as unusable. So the legacy column
-    // rules stay armed and this backdrop keeps being created.
+    // Prefer this plugin's drawer even when the host ships an overlay drawer:
+    // the host overlay lacks a full-screen backdrop (conversation stays
+    // hit-testable beside it). Keep legacy column rules and this backdrop.
     return !frame.hasAttribute('data-sidebar-collapsed')
   }
   const heroPhase = (): boolean =>
     document.querySelector('[data-phase="active"]') === null
   /**
-   * The FAB has two faces. While a sidebar panel owns the main area it reads as
-   * 「返回会话」 and leaves the panel; everywhere else it opens the drawer.
-   *
-   * It matters because the FAB is the ONLY control on screen there: the panel
-   * replaces the conversation, so the header (and with it the drawer toggle)
-   * does not render, and a panel's own page head carries no way back either.
-   * Same button, same corner — only its meaning follows the view.
+   * Two FAB faces: back-to-conversation while a sidebar panel owns the main
+   * area; otherwise open the drawer. On the panel view the FAB is the only
+   * control (header/drawer toggle are gone; panel chrome has no back path).
    */
   const onFabClick = (event: MouseEvent): void => {
     if (panelExit !== null && panelExit.panelOpen()) {
@@ -121,7 +113,7 @@ export function createOverlayTask(
           // No element-level click listener: phone-chrome's capture-phase click
           // handler owns the backdrop tap. The third-party mobile shim stops
           // click propagation at the frame for anything outside the drawer, so
-          // a listener down here never sees the tap (2026-09-14).
+          // a listener here never sees the tap.
           frame.appendChild(backdrop)
           faded = false
         } else if (faded && backdropRemoveTimer !== null) {

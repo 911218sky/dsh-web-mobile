@@ -1,49 +1,22 @@
 /**
- * dsh-web-mobile, host half: session deletion.
+ * Session deletion for the mobile host route.
  *
- * Port of community-fork wzxmt-zhc v2.7.0 src/delete-session.ts, adapted to
- * the mainline baselines (DSH 0.1.1-rc.2 / 0.1.2-rc.1) while staying forward
- * compatible with the unpublished 0.1.3-alpha.1 handle-based persistence.
- * Three deliberate deltas from the fork original, each verified against the
- * installed 0.1.1-rc.2 host (2026-09-06):
+ * Compatible across host generations:
+ * 1. `persistence.list()` — flat headers (≤0.1.2) or handle entries with
+ *    `.header` (0.1.3+); `entryHeader()` accepts both.
+ * 2. Live teardown needs AgentHandle (`cancel` + `whenIdle`); older hosts
+ *    without that face get 409 session-busy instead of deleting under a live
+ *    agent.
+ * 3. `detachSession` is optional per workspace so missing accounting never
+ *    fails a finished deletion.
  *
- * 1. `persistence.list()` is generation-dependent: 0.1.2 and earlier return
- *    flat `SessionHeader[]` (the header IS the entry), 0.1.3 returns
- *    handle/snapshot entries that carry `.header`. `entryHeader()` accepts
- *    both shapes.
- * 2. Live-session teardown needs the 0.1.3 AgentHandle face (callable
- *    `cancel` + `whenIdle`). The 0.1.1/0.1.2 `AgentRegistry.get()` returns a
- *    plain Agent face without them, so on those hosts a live session is
- *    refused with 409 session-busy instead of deleted under a still
- *    registered live agent.
- * 3. Workspace accounting is optional per workspace: 0.1.1-rc.2 Workspace
- *    carries no `detachSession`, so the call is optional-chained and a
- *    finished deletion never fails on missing accounting.
+ * Layout under `persistence.config.root`:
+ *   `<root>/<projectKey(cwd)>/<encodeSegment(id)>/`
+ * Deletion moves the directory to `.sessions-trash/` (payloads renamed with
+ * `.trash`, best-effort `manifest.json`); entries older than 24h are purged.
  *
- * The JSONL backend stores one directory per session under its public
- * `config.root`:
- *
- *   <root>/<projectKey(cwd)>/<encodeSegment(id)>/
- *
- * with immutable generation log files inside. This module recomputes that
- * directory (mirroring the backend's projectKey / encodeSegment layout from
- * @deepseek-ai/dsh-session-persistence-jsonl — verified byte-identical
- * against the 0.1.1-rc.2 backend) and moves it into the trash
- * (`<root>/.sessions-trash/<UTC>-<projectKey>-<encodedId>/`, payloads renamed
- * with a `.trash` suffix plus a best-effort manifest.json) so a deletion can
- * be restored; entries older than 24h are purged best-effort.
- *
- * USED (live) sessions stay deletable on hosts that expose the disposal
- * face: the host stops the session's agent (runtime
- * `cancel({kind:'disposed'})` + `whenIdle()`, mirroring the agent-loop
- * disposal sequence), flushes the durable checkpoint (`SessionStore.flush`),
- * and unregisters the live entries via the runtime-visible store internals
- * (there is no public teardown API in either generation). All internal
- * probes are optional-chained so a harness shape change degrades to a clear
- * error instead of a crash.
- *
- * Attachment bytes are content-addressed in a shared backend and are NOT
- * removed; they only become unreachable garbage once no log references them.
+ * Live sessions: cancel → whenIdle → flush → detach store internals (optional-
+ * chained). Attachment blobs are content-addressed and not removed.
  */
 import { rm, mkdir, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import type { Dirent } from 'node:fs'
@@ -63,9 +36,8 @@ const PAYLOAD_NAME = /^session(?:\.v[1-9][0-9]*)?\.jsonl(?:\.zstd)?$/
  * can describe the observable state accurately. */
 type TrashStage = 'rename-payloads' | 'stash'
 
-/** `rename-payloads`: canonical payloads are untouched, the directory is
- * exactly as before. `stash`: payloads were renamed (session already hidden
- * from the host list), the directory itself is still in place. */
+/** `rename-payloads`: payloads untouched. `stash`: payloads renamed (hidden
+ * from list) but the directory is still in place. */
 class TrashMoveError extends Error {
   readonly stage: TrashStage
   constructor(stage: TrashStage, cause: unknown) {
@@ -189,9 +161,8 @@ function detachLiveSession(sessions: DeleteSessionDeps['sessions'] | undefined, 
   store?.store?.get(id)?.detach?.()
 }
 
-/** Remove the session from every workspace account (idempotent; unknown ids
- * resolve without writing). Optional per workspace: 0.1.1-rc.2 Workspace
- * carries no `detachSession`, in which case that workspace is skipped. */
+/** Detach from every workspace account (idempotent). Skip workspaces without
+ * `detachSession`. */
 async function detachFromWorkspaces(deps: DeleteSessionDeps, sessionId: string): Promise<void> {
   if (deps.workspaceRegistry === undefined) return
   for (const workspace of deps.workspaceRegistry.list()) {

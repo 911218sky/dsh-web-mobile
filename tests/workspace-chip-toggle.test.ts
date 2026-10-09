@@ -1,11 +1,7 @@
-// 工作区 chip「再点关闭」的源码契约（2026-09-23，对账 0.1.7-rc.1）。
-//
-// 背景：宿主的 hero 工作区 chip 自己是正常 toggle，但 ui-workspace 的
-// WorkspacePickFlow 把菜单开成 `<Menu anchor={null} portal …>` —— 触发器在
-// Menu 的 rootRef 之外，于是 Menu 的「外部 pointerdown 关闭」把 chip 自己的第二击
-// 也当成外部点击：pointerdown 关、click 又 toggle 回开，净效果＝关不掉。
-// 修复只吞掉这一击 click（React 挂在 root 容器上的 onClick 不再执行），
-// 宿主关闭路径不动。本测试钉住的是「哪里介入、什么时候介入」这几个不可回退的判据。
+// Workspace chip re-tap-to-close: ui-workspace portals the menu with
+// `anchor={null}`, so the chip sits outside Menu's rootRef and the outside-
+// dismiss path treats the second tap as outside (pointerdown closes, click
+// re-opens). The fix swallows that click only; these tests pin where and when.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -21,7 +17,7 @@ const ENTRY = readFileSync(
 )
 
 test('chip 选择器只认 hero 行的直接子菜单触发器', () => {
-  // 预设触发器在 Menu 的 anchor span 里（不是 hero 行的直接子）——带 `>` 才不会误伤它。
+  // Direct-child `>` keeps the Menu's own anchor span out of the selector.
   assert.match(SRC, /const CHIP_SELECTOR = '\[class\*="heroWorkspaceRow"\] > button\[aria-haspopup="menu"\]'/)
 })
 
@@ -45,7 +41,7 @@ test('只在同一颗 chip 的紧随 click 上 stopPropagation', () => {
   const body = SRC.slice(start, end)
   assert.match(body, /chipFrom\(event\.target\) !== chip/)
   assert.match(body, /event\.stopPropagation\(\)/)
-  // 吞 click 是这一处唯一的干预手段：不得额外派发合成事件/点按。
+  // Swallow the click only — no synthetic re-dispatch.
   assert.doesNotMatch(body, /dispatchEvent|\.click\(\)/)
 })
 

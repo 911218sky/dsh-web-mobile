@@ -1,10 +1,6 @@
-// 模型菜单重锚定的「成本契约」：滚动 / 视口路径不得查询全文档。
-//
-// 起因（2026-09-23，店主批准的优化）：本机 18,359 节点时
-// `querySelectorAll('[class*="_7KE1Ra_menu"]')` = 0.568ms/次、卡片查询 0.08ms/次。
-// 旧版把这些查询挂在 pointerdown/click/resize/scroll 上 ⇒ 菜单关着时每次滚动也白花
-// 约 0.65ms/帧（模型流式输出时页面每帧都在滚 —— 60Hz 帧预算的 4%、120Hz 的 8%）。
-// 现在查询只在「命中触发器/菜单的交互」后发生，滚动/改变尺寸只对缓存节点重算位置。
+// Model-menu re-anchor cost contract: scroll/viewport paths must not query the
+// document. Queries run only after a hit on the trigger/menu; scroll/resize
+// only repositions cached nodes.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -37,7 +33,7 @@ test('全文档查询只有一个入口，且只在命中触发器/菜单的交�
   }
 })
 
-test('菜单仍在输入框里水平居中（店主第三轮定稿）', () => {
+test('菜单仍在输入框里水平居中', () => {
   assert.match(SRC, /cardBox\.left \+ cardBox\.width \/ 2/)
   assert.match(SRC, /const left = Math\.min\(Math\.max\(center - width \/ 2, GUTTER\), max\)/)
 })

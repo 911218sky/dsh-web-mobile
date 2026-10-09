@@ -1,4 +1,4 @@
-// misc — split from src/client/mobile.css.ts (2026-08-16), order preserved.
+// misc — split from src/client/mobile.css.ts; order preserved.
 // Self-contained: each section (composer / tablet / desktop) carries its own
 // media query.
 

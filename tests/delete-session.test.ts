@@ -432,7 +432,7 @@ test('uses the _no-cwd project key for a session without cwd (host parity)', asy
   }
 })
 
-// ── mainline baselines（0.1.1-rc.2 / 0.1.2-rc.1 适配，非 fork 行为）──
+// ── mainline baselines (0.1.1-rc.2 / 0.1.2-rc.1 hosts, not fork behavior) ──
 
 test('accepts the flat SessionHeader[] list shape (0.1.1/0.1.2 hosts)', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-del-'))
@@ -442,7 +442,7 @@ test('accepts the flat SessionHeader[] list shape (0.1.1/0.1.2 hosts)', async ()
     const deps: DeleteSessionDeps = {
       persistence: {
         config: { root },
-        // 0.1.2 及更早：list() 返回扁平 SessionHeader[]（无 .header 包裹）
+        // 0.1.2 and earlier: list() returns flat SessionHeader[] (no .header wrap)
         list: async () => [{ id: SESSION_ID, cwd: CWD }],
       },
     }
@@ -462,13 +462,13 @@ test('refuses a live session whose agent face lacks the disposal API with 409', 
     const deps: DeleteSessionDeps = {
       persistence: { config: { root }, list: async () => [{ header: storedHeader() }] },
       sessions: { get: () => ({ id: SESSION_ID }), flush: async () => true },
-      // 0.1.1/0.1.2 的 agents.get() 返回不带 cancel/whenIdle 的 Agent face
+      // 0.1.1/0.1.2 agents.get() returns an Agent face without cancel/whenIdle
       agents: { get: () => ({ id: SESSION_ID }) },
     }
     const result = await deleteSession(deps, SESSION_ID)
     assert.equal(result.status, 409)
     assert.equal('error' in result && result.error.code, 'session-busy')
-    // 目录必须原封未动：拒删不能附带破坏。
+    // Directory must remain intact: refusal must not destroy anything.
     await assert.doesNotReject(stat(dir))
   } finally {
     await rm(root, { recursive: true, force: true })

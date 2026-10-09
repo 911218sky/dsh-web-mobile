@@ -1,26 +1,7 @@
-// Issue #60 / thinking-effort 0.3.7 follow-up: a third-party model seat
-// (@hytime/dsh-thinking-effort) registered on conversation.input.model replaces
-// the official pill, so the trailing lane keeps no aria-haspopup="menu"
-// trigger: the pill absorber rule never matches, the meter fallback splits the
-// slack with the seat, and in the seat's open state the zero-width root's
-// right:0-anchored panel (width min(336px, 100vw - 32px)) sweeps 336px leftward
-// off screen - reporter-measured at 393px: root x=106, panel left=-230; with
-// our stylesheet disabled root x=339, panel left=+3.
-//
-// thinking-effort 0.3.7 then added its own narrow-screen clamp, which writes an
-// INLINE left on the panel (390px phone, new chat: root x=122, inline
-// left=-106px, i.e. the intended 16px margin). The old repair 2 recipe
-// (left:50% + translateX(-50%)) left its left arm dead under that inline value
-// while its transform kept firing, so the panel landed at
-// 122 + (-106) + (-168) = -152px - off screen by 152px.
-//
-// This pins the current class fix: the seat root must stretch across the
-// trailing lane (chip pushed right, free space consumed so the meter
-// fallback's auto margin zeroes out) and the open panel must be card-anchored
-// (left:0/right:0 + auto margins, transform:none to neutralise the stray
-// translateX, !important to beat the plugin's inline left), with three
-// viewport guards for the short-screen listbox, the keyboard-shrunk phone and
-// landscape.
+// Issue #60: a third-party model seat can replace the official pill. The seat
+// root must span the trailing lane; the open panel must be card-anchored
+// (left/right 0 + auto margins, transform:none, !important over the plugin's
+// inline left), with viewport guards for short screens, keyboard, and landscape.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

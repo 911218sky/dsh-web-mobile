@@ -65,8 +65,7 @@ test('classifySwipe: axis lock — horizontal-dominant strokes pass, vertical-do
   assert.equal(classify({ dx: 10, dy: 9, velX: 0.6 }), 'open')
   // |dx| = 10, |dy| = 10 → not strictly dominant → none
   assert.equal(classify({ dx: 10, dy: 10, velX: 0.6 }), 'none')
-  // a natural ~45° diagonal (80,60): |dx| > |dy| → accepted (was rejected
-  // by the old 1.5× bias — the "识别成对话内容滚动" fix)
+  // ~45° diagonal (80,60): |dx| > |dy| → accepted (old 1.5× bias rejected these)
   assert.equal(classify({ dx: 80, dy: 60 }), 'open')
 })
 
@@ -96,9 +95,7 @@ test('classifySwipe: open drawer — rightward distance closes', () => {
 })
 
 test('classifySwipe: open drawer — leftward closes too (bidirectional close)', () => {
-  // Sixth round (2026-08-29): pushing the drawer back toward its slot is the
-  // natural close gesture and the only one the follow animation paints, so
-  // refusing it made the drawer track the finger and then spring back.
+  // Leftward toward the slot is a valid close (follow paints that direction).
   assert.equal(classify({ dx: -120, dy: 0, drawerOpen: true }), 'close')
   // 51px / 390 = 0.13 → exactly at threshold, mirrored
   assert.equal(classify({ dx: -51, dy: 0, drawerOpen: true }), 'close')
@@ -229,7 +226,7 @@ test('hitTestStart: viewport edge bounds', () => {
   assert.equal(hitTestStart(-1, 390, true, t), false)
 })
 
-// --- followTranslate (B 档 follow mapping, C3 hybrid) ---
+// --- followTranslate (B-tier follow mapping, C3 hybrid) ---
 
 test('followTranslate: open stroke drags the drawer out of its slot, clamped', () => {
   const closedTx = -226.7
@@ -245,16 +242,11 @@ test('followTranslate: open stroke drags the drawer out of its slot, clamped', (
 })
 
 test('followTranslate: the close slot must be 110% of the OPEN drawer width', () => {
-  // 2026-08-29 seventh round: the slot used to come from the CLOSED host —
-  // the ~206px nav rail, i.e. -226.7px — while the element being dragged is
-  // the ~280px drawer, which parks at -308px. Clamping at the rail's slot
-  // froze the drag 81px short of the edge (「半开不开」) and left the release
-  // to creep the remainder. startFollow now derives the slot from the open
-  // drawer's own width; this pins the arithmetic that made the bug visible.
+  // Slot must use the open drawer's width (~280px → -308), not the closed rail
+  // (~206px → -226.7); rail clamping stopped 81px short of the edge.
   const railSlot = -226.7
   const drawerSlot = -308
-  // A 280px stroke should still be following at the rail slot (clamped) but
-  // reaches the real edge exactly with the correct one.
+  // 280px stroke: still following at rail slot, reaches the edge with drawer slot.
   assert.equal(followTranslate(railSlot, -280, false, true), -226.7)
   assert.equal(followTranslate(drawerSlot, -280, false, true), -280)
   assert.equal(followTranslate(drawerSlot, -308, false, true), -308)
@@ -267,7 +259,7 @@ test('followTranslate: close stroke follows only toward the slot (leftward, LTR)
   assert.equal(followTranslate(closedTx, -80, false, true), -80)
   // clamped at the closed slot
   assert.equal(followTranslate(closedTx, -400, false, true), -226.7)
-  // rightward-logical = the legacy A 档 close direction: no follow
+  // rightward-logical = the legacy A-tier close direction: no follow
   assert.equal(followTranslate(closedTx, 40, false, true), null)
   assert.equal(followTranslate(closedTx, 0, false, true), null)
 })
@@ -375,14 +367,9 @@ test('gesture-guard: ancestor-chain coverage with upTo', () => {
 })
 
 test('gesture-guard: axis-lock flag yields the host before any consume mark exists (audit S0)', () => {
-  // Ordering fact (audit 2026-08-27): the host's document-capture pointerup
-  // (onDrawerPointerUp, registered BEFORE the gesture layer's) runs first on
-  // the stroke's own release event — markGestureConsumed has not been called
-  // yet at that instant, so consumeIfGestured() is still false and the host
-  // toggled the drawer before the gesture could classify (double-flip net
-  // zero, the "dead gesture" bug). The only race-free yield signal is the
-  // axis lock: tryLock writes it during pointermove, strictly before ANY
-  // pointerup.
+  // Host document-capture pointerup runs before the gesture layer's, so
+  // consume marks are not set yet. Axis lock (written on pointermove) is the
+  // race-free yield so the host does not toggle before classify (dead gesture).
   assert.equal(isStrokeLocked(), false, 'idle: lock clear')
   markStrokeLocked() // what tryLock() does on horizontal dominance
   const { child } = makeChain()
@@ -415,14 +402,10 @@ test('gesture-guard: non-gesture events pass through', () => {
 // --- followOpenTransform (open-direction follow, percentage baseline) ---
 
 test('followOpenTransform: rightward travel walks the drawer out of the -101% base', () => {
-  // The baseline stays symbolic: the element is the ~206px rail when the
-  // stroke arms and the ~280px drawer a frame later, so a px baseline would
-  // mis-place the wider subtree by its width delta. The base is 101%, NOT
-  // the host's -110% closed slot: from -110% the first 28px of travel stay
-  // hidden behind the slot overshoot (2026-08-29 eighth round, user report
-  // 「刚开始会卡一下，之后才会拖出来」), and even 102% left only 2.4px at the
-  // 8px arm (ninth round, 「最开始有真空期」). 101% keeps a subpixel-safe
-  // margin while putting ~5px of edge on screen at the arm itself.
+  // Percentage baseline: the element swaps ~206px rail → ~280px drawer mid-
+  // stroke, so a px base misplaces by the width delta. Use 101% (not host
+  // -110%): that overshoot hides early travel; 101% keeps a subpixel margin
+  // while putting ~5px of edge on screen at the 8px arm.
   assert.equal(
     followOpenTransform(40, false),
     'translateX(min(0px, calc(-101% + 40px)))',
@@ -483,8 +466,7 @@ test('selectionOwnsStroke: a focused text control owns the stroke via selectionS
   const g = globalThis as { window?: unknown; document?: unknown }
   const originalWindow = g.window
   const originalDocument = g.document
-  // The document selection stays COLLAPSED for the whole stroke while a
-  // composer selection is live — measured on a real iPad (#44).
+  // Document selection stays collapsed while a composer field selection is live (#44).
   g.window = { getSelection: () => ({ isCollapsed: true }) }
   const setActive = (active: unknown): void => {
     g.document = { activeElement: active }
@@ -501,8 +483,7 @@ test('selectionOwnsStroke: a focused text control owns the stroke via selectionS
     // unreachable whenever the composer holds focus.
     setActive({ tagName: 'TEXTAREA', selectionStart: 3, selectionEnd: 3 })
     assert.equal(selectionOwnsStroke(), false)
-    // Input types without a text selection report null (measured in
-    // Chromium: number / email / checkbox).
+    // Non-text input types report null selectionStart/End (number/email/checkbox).
     setActive({ tagName: 'INPUT', selectionStart: null, selectionEnd: null })
     assert.equal(selectionOwnsStroke(), false)
     // Older engines throw InvalidStateError instead of reporting null; the
@@ -542,7 +523,7 @@ test('selectionOwnsStroke: the document selection still wins with no focused fie
   }
 })
 
-// --- Files gesture pure functions (spec 2026-09-13-files-swipe-gesture-design.md) ---
+// --- Files gesture pure functions (files-swipe-gesture-design) ---
 
 const FILES_BASE = {
   distanceRatio: 0.16,
@@ -608,19 +589,17 @@ test('classifyFilesSwipe: panel open — rightward closes it, leftward NEVER col
   assert.equal(filesClassify({ dx: 40, dy: 0, velX: -0.7, panelOpen: true }), 'none') // velocity contradicts direction
 })
 
-test('classifyFilesSwipe: drawer open — rightward routes to the animated drawer close, leftward is none (2026-09-13 narrowing)', () => {
+test('classifyFilesSwipe: drawer open — rightward routes to the animated drawer close, leftward is none', () => {
   assert.equal(filesClassify({ dx: 51, dy: 0, drawerOpen: true }), 'close')
   assert.equal(filesClassify({ dx: 40, dy: 0, velX: 0.7, drawerOpen: true }), 'close')
-  // THE load-bearing narrowing: a leftward stroke beside the open drawer must NOT close it.
+  // Leftward beside an open drawer must not close it.
   assert.equal(filesClassify({ dx: -120, dy: 0, drawerOpen: true }), 'none')
   assert.equal(filesClassify({ dx: -40, dy: 0, velX: -0.7, drawerOpen: true }), 'none')
 })
 
 test('classifyFilesSwipe: drawer open — the rightward close obeys the drawer close gates (no jitter close)', () => {
-  // The files zone overlaps the open drawer column (66px at 390px), so a thumb
-  // drifting sideways while scrolling a row must NOT close the drawer and eat
-  // the tap: this cell IS the drawer-close commit path, and the drawer family's
-  // own classifySwipe demands 0.13 × viewport or a 0.45px/ms fling.
+  // Files zone overlaps the open drawer (~66px at 390px); small drifts must not
+  // close. This cell uses the drawer close gates (0.13× viewport or 0.45px/ms).
   assert.equal(filesClassify({ dx: 9, dy: 0, drawerOpen: true }), 'none')
   assert.equal(filesClassify({ dx: 40, dy: 0, drawerOpen: true }), 'none') // under 0.13 × 390 = 50.7px, no fling
   assert.equal(filesClassify({ dx: 51, dy: 0, velX: 0, drawerOpen: true }), 'close') // just past the distance gate  assert.equal(filesClassify({ dx: 9, dy: 0, velX: 0.7, drawerOpen: true }), 'close') // a real flick still counts
@@ -629,11 +608,8 @@ test('classifyFilesSwipe: drawer open — the rightward close obeys the drawer c
 })
 
 test('the two families judge the drawer close alike (same physical stroke, right zone vs left zone)', () => {
-  // The right-edge stroke is routed into the files family but commits the same
-  // drawer close, so "两个族判定等价" must hold across the whole distance/
-  // velocity space — not just at one sample. Drift here is how the missing
-  // gate slipped in (2026-09-14): the drawer open at 390px overlaps the files
-  // zone by 66px, so an ungated cell closed the drawer on an 8px thumb drift.
+  // Right-edge files routing must match drawer-family close across distance/
+  // velocity space (zone overlaps drawer by ~66px at 390px).
   const m = (dx: number, velX: number) => ({ dx, dy: 0, velX })
   for (const [dx, velX] of [
     [9, 0], [20, 0], [40, 0.2], [50, 0.44], [51, 0],
@@ -661,11 +637,8 @@ test('classifyFilesSwipe: RTL mirrors the directions', () => {
 })
 
 test('openStateStartMode: the drawer body always owns its stroke', () => {
-  // At 390px the viewport-ratio files zone (45% from the right = x >= 214)
-  // overlaps the 280px drawer by 66px. The owner's rule (2026-09-17): touching
-  // the drawer and dragging left must close it, so inside the body the drawer
-  // family always wins; outside the body the files zone keeps its routing and
-  // its deliberate leftward 'none' verdict (2026-09-13 narrowing).
+  // Inside the drawer body the drawer family wins; outside, files zone keeps
+  // its routing (including leftward 'none' when the drawer is open).
   assert.equal(openStateStartMode(true, true), 'drawer')
   assert.equal(openStateStartMode(true, false), 'drawer')
   assert.equal(openStateStartMode(false, true), 'files')

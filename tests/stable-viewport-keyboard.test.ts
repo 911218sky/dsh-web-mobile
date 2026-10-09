@@ -1,14 +1,7 @@
-// 快捷键弹层「抽搐/闪」的三个真机结论（2026-09-25，Android 16 WebView）。
-//
-// ① 卡片不许随软键盘改大小：实测 vh / svh / lvh / dvh 四个单位**一起**随键盘变
-//    （754↔471），所以拿视口单位定高的卡片必然跟着缩；改成用 --dsh-web-mobile-vh
-//    （只在高度变大或宽度变化时更新 = 不含键盘的视口高度）定高。
-// ② 打开弹层不得改变全屏亮度：设置面板自己已压一层 0.24 遮罩，弹层再叠一层就是
-//    0.24 → 0.42 的一步跳深（报障人「全屏闪」）；那一层的 ::after 还挂着宿主的
-//    _modalEnter 淡入。两者都去掉。
-// ③ 手机档收掉搜索行：报障人两次实机复现钉死因果 —— **行在打开就闪、行藏就不闪**
-//    （宿主把焦点抢到该输入框 → 键盘在打开瞬间抬起 → 布局视口 754→471 → 整页重排）。
-//    只收手机档，平板（768–1023）与桌面照旧。只做 CSS 隐藏，绝不删宿主节点。
+// Shortcut-modal flash/jitter guards:
+// 1) Card max-height uses --dsh-web-mobile-vh (keyboard-stable), not vh/dvh.
+// 2) Opening the modal must not add a second scrim or _modalEnter fade.
+// 3) Phone tier hides the search row (CSS only); tablet/desktop keep it.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

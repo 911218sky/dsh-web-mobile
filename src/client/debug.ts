@@ -79,9 +79,8 @@ export function installDebugBadge(ctx: ClientContext): void {
     // phone-side repro can be read from the machine serving the page without
     // anyone copying numbers off the screen. no-cors + a string body keeps it a
     // simple request (no preflight); a missing listener is ignored.
-    // Rects of the plugin's own header controls plus the host row they live in:
-    // the phone-side position of the files opener is what a "not pinned to the
-    // top-right corner" report is about, and it cannot be measured headless.
+    // Include header control rects (toggle / files / chips) for layout
+    // debugging; these positions are hard to inspect headlessly.
     const marker = (sel: string): string => {
       const el = document.querySelector<HTMLElement>(sel)
       if (el === null) return 'absent'

@@ -5,39 +5,25 @@ import { installMobileEffect } from './phone-chrome.ts'
  * Mobile guard: the keyboard-shortcut modal must not raise the soft keyboard
  * by itself.
  *
- * `dsh-client-ui-shortcuts` renders its search field with the host marker
- * `data-modal-autofocus` (`<input data-modal-autofocus …/>`), and the
- * primitives Modal focuses that field when the modal mounts. On desktop that
- * is the right default. On a phone it costs the user half the screen the
- * moment the sheet opens — the page is a shortcut EDITOR and the search box is
- * its secondary affordance — and it also makes the sheet jump, because the
- * modal is sized by `100dvh`: the keyboard shrinking the viewport resizes it
- * (measured 2026-09-25: `dvh` 844 → 520 takes the dialog from 600px to 496px,
- * i.e. the card snaps right after it appears; on the host's centered card the
- * same change moved the top edge 152 → 84, the earlier 「抽搐」 report).
+ * `dsh-client-ui-shortcuts` marks its search field with `data-modal-autofocus`,
+ * and the primitives Modal focuses that field on mount. On a phone that costs
+ * half the screen (the sheet is a shortcut editor; search is secondary) and
+ * makes the sheet jump because the modal is sized by `100dvh` — keyboard
+ * shrink of the viewport resizes the dialog.
  *
- * Why not the own-property shadow `composer-keyboard-guard.ts` uses: that
- * focus happens during React's COMMIT (the Modal's layout-effect path), which
- * is still inside the task that inserted the node. A MutationObserver callback
- * is a microtask and therefore runs AFTER it — measured: with the own no-op
- * `focus` already installed on the field, `document.activeElement` was still
- * the field. So the guard has to be in place BEFORE the modal is inserted,
- * which leaves exactly one synchronous hook: the method itself. While either
- * modal of this family is in the DOM we shadow `HTMLInputElement.prototype.focus`
- * and no-op it for the shortcut modal's autofocus field; the shadow is removed
- * as soon as neither modal is present (and on dispose), so nothing outlives the
- * user's visit to that sheet.
+ * Why not the own-property shadow from composer-keyboard-guard: that focus
+ * runs during React commit (Modal layout-effect), before a MutationObserver
+ * microtask. The guard must be in place before insert, so while either modal
+ * of this family is in the DOM we shadow `HTMLInputElement.prototype.focus`
+ * and no-op it for the autofocus field; remove the shadow when neither modal
+ * is present (and on dispose).
  *
- * A TAP is unaffected: the browser focuses natively, and the shadow only
- * replaces the JS method. Search therefore stays one tap away, and the shadow
- * also stops the host's `modifiedCount`-driven re-focus from pulling the caret
- * out of a field the user is already using.
+ * Native taps are unaffected (browser focuses without the JS method). Search
+ * stays one tap away; the shadow also stops host `modifiedCount` re-focus from
+ * stealing the caret from a field in use.
  *
- * DOM contract (verified against 0.1.7-rc.2):
- * - `[data-shortcut-modal="settings"]` — the settings sheet (the only opener).
- * - `[data-shortcut-modal="shortcuts"]` — the shortcut modal.
- * - `[data-modal-autofocus]` — the field the Modal focuses on mount.
- * Re-audit all three when the host or dsh-client-ui-shortcuts upgrades.
+ * DOM: `[data-shortcut-modal="settings"|"shortcuts"]`, `[data-modal-autofocus]`.
+ * Re-audit when the host or dsh-client-ui-shortcuts upgrades.
  */
 const SETTINGS_MODAL = '[data-shortcut-modal="settings"]'
 const SHORTCUT_MODAL = '[data-shortcut-modal="shortcuts"]'
@@ -80,9 +66,9 @@ export function installShortcutModalKeyboardGuard(ctx: ClientContext): void {
     }
 
     // childList only (no subtree): both modal roots are portaled to body as
-    // direct children, and a subtree observer would run on every mutation the
-    // app makes. The settings sheet is present before the shortcut modal mounts,
-    // so the shadow is already installed when the Modal focuses its field.
+    // direct children; a subtree observer would run on every app mutation.
+    // Settings is present before the shortcut modal mounts, so the shadow is
+    // already installed when Modal focuses its field.
     const observer = new MutationObserver(sync)
     observer.observe(document.body, { childList: true })
     sync()

@@ -1,22 +1,15 @@
 /**
- * dsh-web-mobile, node half. Mostly a client UI plugin: apply() exists so the
- * plugin appears in the host Loader. It installs transparent gzip/brotli
- * compression for large JSON responses (long-session history is megabytes on
- * a phone; patches http.ServerResponse.prototype, disposer restores it), and
- * — ported from community-fork wzxmt-zhc v2.7.0 — the ONE host capability the
- * mobile drawer needs that the harness does not provide: deleting a session
- * (the host session menu only knows rename / fork / archive; archive only
- * hides a row).
+ * Node half of dsh-web-mobile: `apply()` registers the plugin with the host
+ * Loader. Installs transparent gzip/brotli for large JSON responses (patches
+ * `http.ServerResponse.prototype`; disposer restores on unload) and a session
+ * delete route the host menu lacks (rename / fork / archive only).
  *
- * `POST /api/mobile-nav.session.delete` receives `{ sessionId }` and hands
- * the work to `deleteSession()` (see `delete-session.ts`). Services are read
- * at request time through `ctx.get()` so the row fails with a clear error
- * (never crashes) in host shapes that omit them.
+ * `POST /api/mobile-nav.session.delete` → `deleteSession()` (`delete-session.ts`).
+ * Services are read via `ctx.get()` at request time so missing host services
+ * yield a structured error instead of a crash.
  *
- * The browser half ships via exports["./client"], discovered through the
- * package.json dsh.client declaration. Host packages are intentionally NOT
- * type-imported: this repo's node_modules only carries the client-side
- * @deepseek-ai packages, so all host faces are declared structurally below.
+ * Browser half: exports["./client"] via package.json `dsh.client`. Host types
+ * are structural (no harness type-imports; this repo only has client packages).
  */
 import { timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -57,11 +50,9 @@ const MAX_BODY_BYTES = 1_048_576
 /** Sentinel: the request body grew past MAX_BODY_BYTES. */
 class PayloadTooLargeError extends Error {}
 
-/** Drain a request body as UTF-8 text, rejecting with PayloadTooLargeError
- * once the accumulated size exceeds MAX_BODY_BYTES. Past the limit the
- * buffered data is released and further chunks are discarded (the socket is
- * left to drain so the 413 response can actually be delivered — destroying
- * the request mid-stream would race the response and yield an empty reply). */
+/** Drain the request body as UTF-8; reject with PayloadTooLargeError past
+ * MAX_BODY_BYTES. Past the limit, release the buffer and discard further
+ * chunks (leave the socket to drain so the 413 can be delivered). */
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = ''
@@ -85,12 +76,9 @@ function readBody(req: IncomingMessage): Promise<string> {
   })
 }
 
-/** Same-origin gate: a browser-supplied Origin header must name the same host
- * as the request itself. Missing/empty Origin = non-browser client — the
- * companion {@link isMissingOriginAuthorized} gate decides whether that
- * client may proceed (loopback / session cookie / known token).
- * No allowlist: localhost / 127.0.0.1 / LAN entries all work via host
- * equality, so same-origin browser POSTs (which always carry Origin) pass. */
+/** Same-origin gate: browser Origin must match the request host. Missing
+ * Origin → non-browser; {@link isMissingOriginAuthorized} decides (loopback /
+ * session cookie / known token). Host equality covers localhost and LAN. */
 function sameOrigin(req: IncomingMessage): boolean {
   const origin = req.headers.origin
   if (origin === undefined || origin === '') return true
@@ -185,24 +173,14 @@ function respondFailure(req: IncomingMessage, res: ServerResponse, status: numbe
   respond(res, status, body)
 }
 
-/**
- * Plugin name, per the official minimal plugin shape (name + apply). The patch
- * row in cordis.patch.yml carries the same id, so nothing resolves through this
- * value in this repo; it labels the runtime record and is what the documented
- * form declares. Kept in sync with package.json name.
- */
+/** Plugin id (`name` + `apply`); keep in sync with package.json. */
 export const name = 'dsh-web-mobile'
 
 export function apply(ctx: HostContext): void {
-  // Transparent gzip/brotli for large JSON responses (long-session history
-  // is megabytes on a phone). Patches http.ServerResponse.prototype; the
-  // disposer restores it on plugin unload/reload.
+  // Transparent gzip/brotli; disposer restores ServerResponse.prototype.
   ctx.effect(() => installResponseCompression(), 'dsh-web-mobile: response compression')
 
-  // Session-delete route (port of fork wzxmt-zhc v2.7.0). Registers once the
-  // web route registry exists; the persistence / session / agent / workspace
-  // services are read per request so host shapes without them degrade to a
-  // structured 503 instead of a crash.
+  // Session-delete route once webServer exists; services read per request.
   ctx.inject(['webServer'], (webCtx) => {
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',

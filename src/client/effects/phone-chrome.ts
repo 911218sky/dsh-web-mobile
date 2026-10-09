@@ -29,11 +29,10 @@ export const MOBILE_QUERY = '(max-width: 1023px) and (pointer: coarse)'
  *  MOBILE_QUERY — because slot-rendered controls exist at every width. */
 export const DESKTOP_QUERY = '(min-width: 1024px)'
 
-/** Pointer-only guard for the ONE feature that has no desktop equivalent:
- *  the session-delete menu injection. Armed on touch-primary devices at
- *  EVERY width — a large tablet in landscape (e.g. 1238px) keeps the desktop
- *  layout but still gets the 「删除会话」 item. Mouse-driven or pointer-less
- *  windows never arm it, at any width. */
+/** Pointer-only guard for the one feature with no desktop equivalent: the
+ *  session-delete menu injection. Armed on touch-primary devices at every
+ *  width — a large landscape tablet keeps desktop layout but still gets the
+ *  delete-session item. Mouse-driven or pointer-less windows never arm it. */
 export const TOUCH_QUERY = '(pointer: coarse)'
 
 /** Long press on a session row opens its ⋯ menu — the phone equivalent of the
@@ -102,18 +101,11 @@ export function getFrame(): HTMLElement | null {
   return document.querySelector('[data-mobile-nav="frame"]') ?? findFrame()
 }
 
-/** The third-party mobile compat shim shipped inside `@linxin666/dsh-web-all`
- *  collapses the drawer on ANY click inside `[role="treeitem"]` at ≤768px by
- *  clicking the host's logo-row toggle — with no `_rowActions` exemption, so a
- *  tap on a row's ⋯ closed the drawer instead of opening its menu (2026-09-14;
- *  its sibling implementation inside `@linxin666/dsh-remote-web-ui` does exempt
- *  the row actions). It resolves that toggle with
- *  `frame.querySelector('[data-dsh-responsive-part="sidebar-toggle"]')`, so an
- *  inert element carrying the same stamp EARLIER in tree order turns every one
- *  of its dismiss calls into a no-op and leaves dismiss ownership to us (row
- *  taps close through the navigation observer, backdrop taps through the
- *  capture click path). Gated on the shim's own stamp: hosts without it stay
- *  untouched. */
+/** Neutralize `@linxin666/dsh-web-all`'s drawer dismiss: it clicks the first
+ *  `[data-dsh-responsive-part="sidebar-toggle"]` on any treeitem tap (no row-
+ *  actions exemption), so an earlier inert stamp makes its dismiss a no-op
+ *  and this plugin owns close (nav observer / backdrop capture). No-op when
+ *  the shim is absent. */
 const HOST_TOGGLE_SELECTOR = '[data-dsh-responsive-part="sidebar-toggle"]:not([data-mobile-nav])'
 const DISMISS_SHADOW_SELECTOR = '[data-mobile-nav="dismiss-shadow"]'
 
@@ -150,7 +142,7 @@ export function ensureDismissShadow(): void {
  * (The host-generation probe this controller used to call was dead code —
  * nothing ever read `data-mobile-nav-gen`, and the plugin deliberately does
  * not yield the drawer to the host's one: see docs/maintenance/pitfalls.md
- * §0.1.5 抽屉 z 与遮罩.)
+ * §0.1.5 drawer z-index and backdrop.)
  */
 export function installFrameController(): () => void {
   if (frameControllerInstalled) return () => {}
@@ -270,8 +262,7 @@ export function addReconcilerTask(task: ReconcilerTask): () => void {
  * - The feature probe is the reliable signal: `font: -apple-system-body` is
  *   Safari-only and `-webkit-touch-callout` is an iOS property, so the pair
  *   is true on iOS WebKit (including Chrome / Edge / Opera on iOS, which are
- *   WebKit and zoom identically) and false on Chromium (measured) and on
- *   macOS Safari.
+ *   WebKit and zoom identically) and false on Chromium and on macOS Safari.
  * - The UA fallback covers engines whose CSS.supports is missing or which
  *   parse the probe differently: iPhone / iPad / iPod UAs, plus iPadOS 13+
  *   which reports a Macintosh UA and is told apart by its touch points.
@@ -396,24 +387,15 @@ export function installPhoneChrome(ctx: ClientContext): void {
     themeMeta.content = bodyBg()
     if (themeMeta.parentElement === null) document.head.appendChild(themeMeta)
 
-    // The keyboard-less viewport height (STABLE_VIEWPORT_VAR).
+    // Keyboard-less viewport height (STABLE_VIEWPORT_VAR).
     //
-    // Measured 2026-09-25 on the reporter's phone (Android 16 WebView,
-    // adjustResize): raising the soft keyboard takes the layout viewport from
-    // 754 to 471, and vh / svh / lvh / dvh ALL follow it (all four measured at
-    // 471) — no CSS unit on this engine can ignore the keyboard. So every card
-    // sized by a viewport unit shrank with it: the settings sheet and the
-    // shortcut modal each collapsed a step, which is the reporter's 「又闪一下」
-    // when they tapped the search field; the previous release's .2s max-height
-    // transition only turned that step into a 150ms slow-motion lurch.
-    //
-    // The keyboard changes height but NOT width, so the height is tracked on a
-    // monotonic rule: update only when it grows, or when the width changes
-    // (rotation / real window resize). The value therefore stays at the
-    // keyboard-less height, the two cards keep their size when the keyboard
-    // appears, and the keyboard simply covers their lower half. Content that
-    // would fall behind the keyboard gets a keyboard-sized bottom padding on
-    // the scroller (layout.css.ts), which shifts nothing visible.
+    // On Android WebView adjustResize, raising the IME shrinks the layout
+    // viewport and vh/svh/lvh/dvh all follow — no CSS unit ignores the
+    // keyboard, so viewport-unit cards (settings sheet, shortcut modal) jump
+    // when search focuses. Keyboard changes height but not width: update
+    // only when height grows or width changes (rotation / resize). Cards keep
+    // keyboard-less size; IME covers the lower half. Scroller bottom padding
+    // (layout.css.ts) clears content behind the keyboard without a jump.
     let stableVh = 0
     let stableWidth = 0
     const syncStableViewport = (): void => {
@@ -460,29 +442,25 @@ export function installPhoneChrome(ctx: ClientContext): void {
  *   so the content it opened gets the whole screen. Session-row action buttons
  *   (kebab) are excluded — they open a menu that must survive the tap.
  *
- * The touch close always rides the synthesized click. Closing a non-row
- * target from pointerup collapsed the drawer before that click existed, and
- * a collapsed drawer no longer owns the touch point, so the browser
- * dispatched no click at all and the target's own onClick never ran (「新会话」
- * did nothing but retract the drawer, 2026-09-13).
+ * Touch close always rides the synthesized click. Closing a non-row target
+ * from pointerup collapsed the drawer before that click existed, so the
+ * browser dispatched no click and the target's onClick never ran (e.g. New
+ * session only retracted the drawer).
  */
 export const TAP_CLOSE_NAV_SELECTOR =
   'button[data-dsh-taskboard-entry], button[data-dsh-ssh-entry], [class*="newSession"], [class*="sessionRow"], [class*="searchResultRow"], [class*="searchResultWorkspace"], [class*="panelRow"]'
 
 /**
- * The one drawer toggle every non-gesture entry point shares: a CLOSE animates
- * into the closed slot and flips the host marker only once it has landed
- * (closeDrawerAnimated's late commit — spec 2026-08-27), an OPEN stays a plain
- * toggle so the host's own .28s transform transition plays.
+ * Shared drawer toggle for every non-gesture entry: close animates into the
+ * closed slot and flips the host marker only after landing
+ * (closeDrawerAnimated late commit); open stays a plain toggle so the host's
+ * .28s transform plays.
  *
- * Load-bearing for layering, not just for looks (2026-09-25): the popover
- * band's modal-root raise is gated on our backdrop being on screen, and the
- * backdrop outlives the marker flip by design (fade .2s + removal 260ms). A
- * closer that flips the marker while the column is still painted therefore
- * leaves an open modal under the drawer band for the length of the
- * transition — that is the 快捷键弹层「抽搐/闪」 root cause. Routing every
- * closer through here removes the window at the source instead of relying on
- * the band to cover it.
+ * Load-bearing for layering: the popover band raises the modal root only while
+ * our backdrop is on screen, and the backdrop outlives the marker flip (fade
+ * + removal). Flipping the marker while the column is still painted leaves an
+ * open modal under the drawer band for the transition — the shortcut-modal
+ * jump/flash root cause. Route every closer through here.
  */
 export function toggleDrawer(ctx: ClientContext): void {
   if (!closeDrawerAnimated(ctx)) ctx.layout.toggleSidebar()
@@ -525,13 +503,12 @@ export function installOverlayInteractions(ctx: ClientContext): void {
       if (target.closest('[class*="sessionRow"] button') !== null) return false
       return target.closest(TAP_CLOSE_NAV_SELECTOR) !== null
     }
-    // DSHA_SESSION_INTERACTION_V1：宿主把「单击=选中、双击=打开」拆成了两步
-    // （data-dsha-session-select 标记 + dsha-session-open 事件）。上游的
-    // 「点行即关抽屉」会在第一次单击就把抽屉收掉，双击永远到不了。
-    // 这些行改由 dsha-session-open 事件关闭（见下方 document 监听）。
-    // 非 DSHA 宿主没有这个标记，这一条天然不命中。
-    // 豁免只属于点行关抽屉的两个调用方（click / pointerup），不得回流进
-    // 长按武装门，否则 DSHA 行长按开不了 ⋯ 菜单（#82）。
+    // DSHA_SESSION_INTERACTION_V1: host splits select (click) vs open (dblclick)
+    // via data-dsha-session-select + dsha-session-open. Closing the drawer on
+    // first click would block double-tap open — those rows close on
+    // dsha-session-open instead (listener below). Non-DSHA hosts lack the
+    // marker. Exemption is only for tap-close callers; do not fold into the
+    // long-press arm gate or DSHA rows cannot open the ⋯ menu (#82).
     const shouldCloseOnTapInsideDrawer = (target: EventTarget | null): boolean =>
       !(target instanceof Element && target.closest('[data-dsha-session-select]') !== null)
       && isDrawerNavTarget(target)
@@ -546,17 +523,16 @@ export function installOverlayInteractions(ctx: ClientContext): void {
     let navObserver: MutationObserver | null = null
     let navTimer: number | null = null
 
-    // 2026-09-22 交互契约（群内统一）：单击 = 选中、双击 = 打开、长按 = 改会话名。
-    // 宿主 0.1.7 把「改会话名」挂在会话行标题的 dblclick 上（onRenameRequest），
-    // 而这恰好是双击手势要用的那个事件：双击会既打开会话又弹改名框。所以真实
-    // dblclick 在这里被吞掉（下方 onDrawerDoubleClick），长按则重放同一个事件去
-    // 开宿主自己的改名框（requestRowRename）——只有我们派发的那一个事件被放行。
-    // Touch has no hover, so the host's `_rowActions` — the ⋯ menu anchor — never
-    // shows up by itself: only `:hover` and `menuOpen` reveal it. Long press used
-    // to be the touch path to that menu; it belongs to rename now, so the mobile
-    // stylesheet pins `_rowActions` open instead (删除 / 归档 / 分叉 仍有触屏入口).
-    // The host menu closes on pointerleave, which the finger lift itself fires,
-    // and that lift still synthesizes a click on the row: both need guarding.
+    // Contract: click = select, double-tap = open, long-press = rename.
+    // Host 0.1.7 hangs rename on title dblclick (onRenameRequest) — the same
+    // event double-tap needs — so real dblclick is swallowed
+    // (onDrawerDoubleClick) and long-press redispatches it via
+    // requestRowRename (only our synthetic event is allowed through).
+    // Touch has no hover, so `_rowActions` never appears on its own; long
+    // press now owns rename, and the stylesheet pins `_rowActions` open
+    // (delete / archive / fork still reachable). Host menu closes on
+    // pointerleave (fired by finger lift), and the lift synthesizes a row
+    // click — both need guarding.
     let pressTimer: number | null = null
     let pressOrigin: { x: number; y: number } | null = null
     let pressRow: HTMLElement | null = null
@@ -590,9 +566,8 @@ export function installOverlayInteractions(ctx: ClientContext): void {
      *  forge it. */
     const syntheticDoubleClicks = new WeakSet<Event>()
 
-    /** 长按 = 改会话名：宿主把改名挂在标题的 dblclick 上，这里重放那个事件，
-     *  而不是复制一套弹窗链路（宿主的 rename 状态机是包内私有的）。
-     *  @returns 是否成功派发；宿主标记变了、拿不到标题时为 false，调用方回退。 */
+    /** Long-press rename: redispatch the host title dblclick (rename state
+     *  machine is package-private). @returns false if the title is missing. */
     const requestRowRename = (row: HTMLElement): boolean => {
       const title = row.querySelector<HTMLElement>('[class*="_title"]')
       if (title === null) return false
@@ -602,12 +577,9 @@ export function installOverlayInteractions(ctx: ClientContext): void {
       return true
     }
 
-    /** Swallow the host's title-double-click rename (the 2026-09-22 contract puts
-     *  rename on long press, and double tap on "open"). Capture phase on
-     *  `document`, so the event never reaches React's root container and the
-     *  title's own onDoubleClick cannot run. Armed only inside the mobile
-     *  environment (this effect is MOBILE_QUERY-gated), so mouse-driven desktops
-     *  keep the host behaviour untouched. */
+    /** Swallow host title-dblclick rename (rename is long-press; double-tap
+     *  opens). Capture on document so React never sees it. Mobile-only
+     *  (MOBILE_QUERY); desktop keep host behaviour. */
     const onDrawerDoubleClick = (event: MouseEvent): void => {
       if (syntheticDoubleClicks.has(event)) return
       const target = event.target
@@ -728,8 +700,7 @@ export function installOverlayInteractions(ctx: ClientContext): void {
         pressTimer = null
         if (pressRow === null) return
         pressFired = true
-        // 长按 = 改会话名。拿不到标题（宿主标记变了）就退回 ⋯ 菜单：长按至少还能
-        // 到达行操作，而不是变成一个什么都不做的死手势。
+        // Long-press rename; fall back to ⋯ menu if the title marker is gone.
         if (!requestRowRename(pressRow)) openRowMenu(pressRow)
       }, LONG_PRESS_MS)
     }
@@ -865,8 +836,8 @@ export function installOverlayInteractions(ctx: ClientContext): void {
       // the tap's click, and the target's onClick would never run.
     }
 
-    // DSHA 宿主在「真正打开会话」时才派发 dsha-session-open（单击只选中），
-    // 所以抽屉的关闭挂在这个事实上，而不是挂在点击上。
+    // DSHA fires dsha-session-open only on real open (click selects); close
+    // the drawer on that fact, not on the click.
     const onDshaSessionOpen = (): void => {
       if (drawerOpen()) toggleSidebar()
     }

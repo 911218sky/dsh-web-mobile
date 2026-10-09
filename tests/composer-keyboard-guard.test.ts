@@ -8,10 +8,8 @@
 // real gesture arrives. The guard shadows the editor element's own `focus`
 // property while a tap is in flight, then restores it.
 //
-// Scope (2026-09-23): both engines, i.e. iOS WebKit **or** `(pointer: coarse)`.
-// The original iOS-only gate measured "never fires" on Android — the shop
-// device kept re-raising the keyboard on `+` because the guard was not
-// installed at all.
+// Scope: iOS WebKit **or** `(pointer: coarse)`. An iOS-only gate left Android
+// unprotected — the keyboard re-raised on `+` because the guard never installed.
 //
 // The DOM half (capture listeners, closest() scoping) is browser-only; these
 // tests audit the source invariants the fix depends on, mirroring how
@@ -36,8 +34,7 @@ test('guard covers iOS WebKit and coarse pointers via the shared probes', () => 
 
 test('guard listens on all three touch entry points in the capture phase', () => {
   // mousedown alone is a no-op on Android WebView: the compatibility mousedown
-  // is often swallowed once touchstart's default is prevented (measured
-  // 2026-09-23 — the shadow was never installed).
+  // is often swallowed once touchstart's default is prevented.
   for (const event of ['pointerdown', 'touchstart', 'mousedown']) {
     assert.match(SOURCE, new RegExp(`addEventListener\\('${event}', onPointerDown, true\\)`))
     assert.match(SOURCE, new RegExp(`removeEventListener\\('${event}', onPointerDown, true\\)`))
@@ -58,12 +55,9 @@ test('shadow restores deterministically and never outlives the tap', () => {
 })
 
 test('restoring the shadow also closes the guard window', () => {
-  // Regression pin (2026-09-23): restore() used to delete the shadow but leave
-  // `shadowTimer` non-zero, and onFocusIn's gate IS `shadowTimer === 0` — so
-  // after a single composer-button tap the guard stayed armed forever and every
-  // focusin on the editor was blurred synchronously. The shop device could no
-  // longer open the keyboard at all ("输入框动不了了"; measured on-device:
-  // blurWorked=true focusHeld=false, vv pinned at 754).
+  // restore() must clear the shadow and zero `shadowTimer`: onFocusIn gates on
+  // `shadowTimer === 0`, so a leftover timer kept the guard armed and blurred
+  // every editor focusin (keyboard could not reopen).
   assert.match(SOURCE, /window\.clearTimeout\(shadowTimer\)\s*\n\s*shadowTimer = 0/)
 })
 

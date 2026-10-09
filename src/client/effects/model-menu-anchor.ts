@@ -2,61 +2,43 @@ import type { ClientContext } from '../client-context.ts'
 import { installMobileEffect } from './phone-chrome.ts'
 
 /**
- * 模型 / 推理等级菜单的锚点修正（2026-09-23 店主："这个模型打开，是不是有点偏左边？"）。
+ * Re-anchors the model / reasoning-level menu to the composer card center.
  *
- * 真机取证（360×754）：
- *   MENU  box=12,605,246,74   class=_7KE1Ra_menu  role=menu  aria-label="模型与推理等级"
- *         style="left: 12px; top: 605px"  position:fixed  **parent=BODY**（portal 出去的）
- *   CARD  [data-composer-card] = 16..342      TRIG = 219..249, 687..715
+ * The host portals the menu to `body` and aligns its right edge to the
+ * trigger, which sits on the right half of the card — the menu reads left-
+ * biased. CSS centering under `_root > _menu` dies after the portal; this
+ * layer recenters with JS (`left` only).
  *
- * 宿主按「菜单右缘贴触发器右缘」定位 ⇒ 菜单落 12..258（店主第一眼："是不是有点偏左边？"）。
- * 本插件早先用 CSS 居中过它，但菜单 portal 到 body 之后那条 `_root > _menu` 子代链断掉，
- * 规则成了**死规则**。CSS 够不到 portal 节点，所以在这里用 JS 重锚。
+ * Prefer horizontal center of `[data-composer-card]`; fall back to trigger
+ * center plus viewport gutter. Only the model-menu class hash is touched.
  *
- * 落位（三轮定稿，2026-09-23）：**菜单在输入框里水平居中** —— 菜单中心 = 输入框中心。
- * 真机：卡片中心 179、菜单宽 246 ⇒ left 56（即 56..302，左右各留约 40px）。
- * 历史对照：宿主原样 12..258（偏左）／居中于触发器 106..352（触发器在右半边 ⇒ 偏右）。
- * 拿不到卡片时退回「居中于触发器 + 视口 GUTTER」。只认模型菜单的哈希锚点，其它菜单不碰。
- *
- * ## 成本（2026-09-23 优化，店主批准）
- *
- * 本机实测（18,359 节点）：`querySelectorAll('[class*="_7KE1Ra_menu"]')` = **0.568ms/次**、
- * `querySelector('[data-composer-card]')` = 0.08ms/次。旧版把这些查询挂在
- * `pointerdown`/`click`/`resize`/`scroll` 上 ⇒ **菜单关着时每次滚动也白花约 0.65ms/帧**
- * （模型流式输出时页面每帧都在滚，最吃这一口；60Hz 帧预算的 4%、120Hz 的 8%）。
- *
- * 现在分两条路径：
- *   · `refresh()` —— **唯一的查询入口**，只在"可能开关菜单"的交互后跑（点到/聚焦/按键在
- *     触发器或菜单上）。查到就把节点记进 `active`。
- *   · `follow()` —— 滚动/改变尺寸只对 `active` 重算位置（读两个 rect，约 0.02ms），
- *     `active === null` 时**直接返回、零查询**。
- *
- * 为什么不能干脆删掉 scroll 监听：实测滚动时输入框卡片会移动（同会话内 365 → 648），
- * 菜单开着时得跟着挪，否则会和卡片错位。
- *
- * 为什么不用 MutationObserver：会话在流式输出，`subtree` 观察等于每帧扫全场。
+ * Cost: full-document queries run only on interactions that may open/close
+ * the menu (`refresh` → cache `active`). Scroll/resize use `follow` on the
+ * cached node (zero query when closed). Scroll still needed: the card moves
+ * while the menu is open. MutationObserver is avoided — streaming would
+ * scan the whole tree every frame.
  */
 
-/** 模型触发器（图标形态的 chip）。 */
+/** Model trigger (icon chip). */
 const MODEL_TRIGGER = '[class*="_7KE1Ra_trigger"]'
 
-/** 模型 / 推理等级菜单（portal 在 body 下）。 */
+/** Model / reasoning menu (portaled under body). */
 const MODEL_MENU = '[class*="_7KE1Ra_menu"]'
 
-/** 输入框（composer 卡片）—— 菜单在它里面水平居中。 */
+/** Composer card — menu is centered horizontally within it. */
 const COMPOSER_CARD = '[data-composer-card]'
 
-/** 贴边留白。 */
+/** Viewport edge inset. */
 const GUTTER = 8
 
-/** 宿主在打开动画/二次测量里会再写位置，补几次收尾（毫秒）。 */
+/** Host may rewrite position during open animation / remeasure; settle retries (ms). */
 const SETTLE_MS = [0, 60, 200]
 
 export function installModelMenuAnchor(ctx: ClientContext): void {
   installMobileEffect(ctx, 'dsh-web-mobile: model menu anchor', () => {
     let raf = 0
     const timers: number[] = []
-    /** 已确认「开着」的菜单节点；null 表示当前没有菜单（滚动路径据此零查询）。 */
+    /** Confirmed-open menu node; null when none (scroll path skips queries). */
     let active: HTMLElement | null = null
 
     const laidOut = (el: Element | null): DOMRect | null => {
@@ -65,7 +47,7 @@ export function installModelMenuAnchor(ctx: ClientContext): void {
       return box.width > 0 && box.height > 0 ? box : null
     }
 
-    /** 唯一的全文档查询入口（只在交互路径调用，见文件头「成本」）。 */
+    /** Sole full-document query entry (interaction path only; see header cost note). */
     const findMenu = (): HTMLElement | null => {
       for (const el of document.querySelectorAll<HTMLElement>(MODEL_MENU)) {
         if (laidOut(el) !== null) return el
@@ -73,7 +55,7 @@ export function installModelMenuAnchor(ctx: ClientContext): void {
       return null
     }
 
-    /** 把菜单水平居中在输入框里（拿不到卡片则居中于触发器）。只写 inline left。 */
+    /** Center the menu in the composer card (or on the trigger). Writes inline left only. */
     const place = (menu: HTMLElement): void => {
       const menuBox = laidOut(menu)
       if (menuBox === null) return
@@ -90,17 +72,17 @@ export function installModelMenuAnchor(ctx: ClientContext): void {
       if (center === null) return
       const left = Math.min(Math.max(center - width / 2, GUTTER), max)
       const next = `${Math.round(left)}px`
-      // 只在真的不同时才写：避免和宿主来回抢同一帧。
+      // Skip identical writes so we do not fight the host in the same frame.
       if (menu.style.left !== next) menu.style.left = next
     }
 
-    /** 交互路径：刷新缓存（会查询）并按新位置落位。 */
+    /** Interaction path: refresh cache (queries) and place. */
     const refresh = (): void => {
       active = findMenu()
       if (active !== null) place(active)
     }
 
-    /** 滚动 / 改变尺寸路径：只用缓存节点重算，不查询。 */
+    /** Scroll / resize path: recompute from cached node only (no query). */
     const follow = (): void => {
       if (active === null) return
       if (laidOut(active) === null) {
@@ -118,18 +100,18 @@ export function installModelMenuAnchor(ctx: ClientContext): void {
       })
     }
 
-    /** 交互后补几次落位（宿主在打开动画/二次测量里还会再写一次）。 */
+    /** Settle retries after interaction (host may rewrite during open animation). */
     const scheduleRefresh = (): void => {
       schedule(refresh)
       for (const delay of SETTLE_MS) timers.push(window.setTimeout(() => schedule(refresh), delay))
-      // 计时器只留最近一轮，避免长会话里越积越多。
+      // Keep only the latest settle wave so long sessions do not accumulate timers.
       while (timers.length > SETTLE_MS.length * 2) {
         const stale = timers.shift()
         if (stale !== undefined) window.clearTimeout(stale)
       }
     }
 
-    /** 只有"可能开关菜单"的交互才需要查询：命中触发器或菜单本身。 */
+    /** Query only for interactions that may open/close the menu. */
     const touchesMenu = (event: Event): boolean => {
       const target = event.target
       if (!(target instanceof Element)) return false
@@ -139,7 +121,7 @@ export function installModelMenuAnchor(ctx: ClientContext): void {
     const onPointerDown = (event: Event): void => {
       if (touchesMenu(event)) scheduleRefresh()
     }
-    // 键盘/无障碍路径（聚焦触发器后按 Enter）与合成 click 也要覆盖。
+    // Keyboard / a11y (Enter on focused trigger) and synthetic click.
     const onKeyDown = (event: Event): void => {
       if (touchesMenu(event)) scheduleRefresh()
     }
@@ -149,7 +131,7 @@ export function installModelMenuAnchor(ctx: ClientContext): void {
     const onClick = (event: Event): void => {
       if (touchesMenu(event)) scheduleRefresh()
     }
-    // 视口变化只走"零查询"的重算路径。
+    // Viewport changes use the zero-query follow path.
     const onViewportChange = (): void => {
       schedule(follow)
     }

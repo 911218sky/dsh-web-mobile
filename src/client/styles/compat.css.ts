@@ -1,4 +1,4 @@
-// compat — split from src/client/mobile.css.ts (2026-08-16), order preserved.
+// compat — split from src/client/mobile.css.ts; order preserved.
 // Self-contained: every rule here is mobile-only and the media query opens
 // and closes in this file. Concatenation order still matters for the
 // cascade (compat intentionally overrides layout), just not for syntax.
@@ -86,30 +86,14 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
 
   /* ---------- dshmarket polish: header title row ----------
-     The title row (icon + title + repo link + version + optional
-     "Update market" / "Update all" buttons) is a nowrap flex whose
-     natural width (~450px with both update buttons) exceeds the ~334px
-     sheet. Flex then crushes the flexible items below their content
-     width and every label wraps word-by-word — the "text turns
-     vertical" report. Trigger is state-dependent (the buttons only
-     exist while plugin updates are pending), which explains the
-     sometimes-horizontal/sometimes-vertical flapping. Let the row wrap
-     instead: line 1 keeps icon + title + repo + version, the update
-     buttons get their own full-width-feeling second line, and the title
-     itself is locked to one ellipsized line no matter what follows it.
-     2026-09-25: re-anchored from [data-mobile-nav="frame"] [aria-modal]
-     to the market's own root marker — since rc.2 the whole settings
-     sheet (market included) is portaled to <body> and no longer matches a
-     frame-descendant selector. Same day, second pass: the ported rule's
-     flex:1 1 auto on the title GREW it to fill the row, which pushed the
-     repo link and the version "v1.65.1" to the far right — exactly where
-     the pinned toolbar's close ✕ sits, crowding the corner the owner
-     reported as "很容易误触" (hit-test: the version box reached x≈378,
-     the close ✕ starts at x=350). flex:0 1 auto keeps the title at its
-     natural width (repo + version pack left, as upstream intends) while
-     still letting it shrink-and-ellipsize when the update buttons force a
-     wrap — the wrap rule above, not flex-grow, is what makes room for
-     them. */
+     The title row (icon + title + repo link + version + optional update
+     buttons) is a nowrap flex whose natural width exceeds the sheet. Flex
+     then crushes flexible items and labels wrap glyph-by-glyph. Let the row
+     wrap: line 1 keeps icon + title + repo + version; update buttons take a
+     second line; title stays one ellipsized line. Re-anchored to
+     [data-dsh-market-root] because rc.2 portals the settings sheet to
+     <body>. flex:0 1 auto on the title (not flex-grow) keeps repo + version
+     packed left so they do not crowd the pinned close control. */
   [data-dsh-market-root] [class*="_titleRow"] {
     flex-wrap: wrap !important;
     row-gap: 6px !important;
@@ -143,20 +127,10 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
 
   /* ---------- dshmarket polish: top inset ----------
-     The sheet is pinned to the top of the screen (A': top = safe-area +
-     12px) and the market page started FLUSH against the sheet's top
-     edge — measured 2026-09-25: the title row's gap from the sheet's top
-     was 0px while the pinned close ✕ sat 10px under it, so the whole
-     page read as crushed against the boundary (owner report, IMG_4211:
-     "最上面快要顶到边界了... 把整体往下移一点，有点留白会更美观").
-     Give the page the same 12px inset its own horizontal padding already
-     has (the root box was 12px from each side, 0px from the top), so the
-     title lands ~12px under the sheet's rounded corner, level with the
-     close ✕. The market page is the sheet's CONTENT, so it moves; the
-     pinned toolbar (close ✕) belongs to the sheet and deliberately does
-     NOT move ("关闭按钮可以不动"). Scrolls away naturally with the page.
-     Desktop market is vertically centered with the host's own clearance
-     and never had this read; the rule is mobile-only. */
+     Market page started flush with the sheet top while close sat ~10px
+     under it. Give the page the same 12px top inset as its horizontal
+     padding so the title clears the sheet corner, level with close.
+     Move page content only — the pinned close stays put. Mobile-only. */
   [data-dsh-market-root] {
     margin-top: 12px !important;
   }
@@ -223,52 +197,13 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     min-width: 0 !important;
   }
 
-  /* ---------- dsh-web-ui polish: settings sheet ----------
-     Keep the nav tabs on ONE horizontally scrolling row. Setting rows need
-     no mobile rework: the host redesigned them into compact space-between
-     rows (text left, control right — verified in
-     dsh-client-ui-settings-general .Pt1bsG_row, 2026-09-24). The old
-     "stack each row" rules, written for the previous two-column generation
-     with its dead label/control gap, now fight that design and double every
-     row's height; they were removed (see the tombstone below). */
+  /* ---------- settings sheet polish ----------
+     Setting rows are compact space-between on current hosts; do not stack.
+     Frame-scoped nav/toolbar rules were removed when rc.2 portaled the
+     sheet to body — live rules are in layout.css.ts (Settings dialog). */
 
-  /* Nav tabs + toolbar: TOMBSTONE (2026-09-25). This whole family —
-     the single-row scroller, its hairline scrollbar, the compact cells and
-     the hidden "Open configuration file" button — was scoped to
-     [data-mobile-nav="frame"] because rc.1 rendered the settings sheet in
-     place, inside the app frame. rc.2 wraps the sheet in
-     createPortal(..., document.body): the overlay is a direct body child,
-     nothing inside it matches a frame-descendant selector, and every rule
-     here went dead at once. The live symptoms were the nav cells wrapping
-     into uneven rows that slid under the 138px toolbar and the config-file
-     button reappearing in that toolbar (owner report 2026-09-25). The
-     portal-aware replacements live in layout.css.ts, in the "Settings
-     dialog on mobile" section, anchored on the same structural
-     :has(> :first-child > :last-child > button) gate (settings sheet only;
-     export dialog and directory picker stay excluded). Nothing to restore
-     here — do not re-add behind a frame selector. */
-  /* Setting rows: no mobile rework — the host renders compact space-between
-     rows natively (.Pt1bsG_row: text left, control right, 16px vertical
-     padding, .5px divider). The previous "stack each row" rule family
-     (column + gap:8 + control width:100% + the 36×20 switch cap that undid
-     it) was written for the old two-column generation; on the redesigned
-     host it doubled every row's height — the "settings feel vertically
-     empty" report 2026-09-24 — and was removed in full. If an older host
-     generation ever needs stacking again, reintroduce behind a generation
-     guard, not as a blanket [class*="_row"] override. */
-  /* Models provider editor: a CLOSED <details> ("_customized", the customized
-     models section) must not paint its body. This engine paints the ~1500px
-     model catalog of the closed details as a ghost layer anyway: it overlays
-     the editor's own action rows (Fetch/Cancel/Apply/Add model) and the
-     provider rows BEFORE the editor row in DOM order (those paint under the
-     ghost and lose hit-testing), while rows after it paint above. Result
-     (owner report 2026-09-19): providers cannot be deleted, "fetch available
-     models" does nothing — every tap lands on whatever row overlaps the
-     ghost. The host layout is computed for the collapsed details (editor
-     217px, rows 903px), so the fix is to restore what the browser should do
-     on its own: hide the body while the details is closed. Tapping the
-     summary then opens it for real (details 33 → 1532px, rows re-flow,
-     every button hittable — verified in place before this rule was written). */
+  /* Hide closed customized-models <details> body: some engines still paint
+     the catalog as a ghost layer that steals hits from provider/action rows. */
   [aria-modal="true"] details[class*="_customized"]:not([open]) > [class*="_customizedBody"] {
     display: none !important;
   }
@@ -330,23 +265,11 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   }
 
   /* ---------- dsh-web-ui polish: conversation stats line ----------
-     The official session-status row (turns / steps / LLM time / TTFT /
-     cache) is long. The client marks the exact row with
-     [data-mobile-nav="stats"] (text-anchored, hashed classes can't be
-     targeted). Layout: ONE fixed-height (28px) flex strip that scrolls
-     horizontally — the full metrics stream stays reachable by swiping,
-     the row never grows vertically, no ellipsis or fade, 12px gaps
-     between metric groups, a 2px scrollbar as the swipe affordance.
-
-     2026-09-23 改档（店主："把那个滑动的压缩一下，固定住，不再滑动"）：
-     真机探针实测 可见宽 251px、内容 390px（"10 轮 268 步·244 tok/s" 178 +
-     "57.5M tok·缓存命中 99%" 187，gap 12、font 12），右边 ~75px 被 dock 里的
-     上下文百分比那块占着 ⇒ 一行本来就放不下。按店主选择：**保持一行 + 末尾
-     省略号**。做法：字号 12→10（≈0.83×）、组间距 12→6、去掉为滚动条留的
-     4px 下内边距；overflow 改 hidden（不可滑）、滚动条显式干掉；第一组
-     flex:0 0 auto 保持完整，最后一组 flex:0 1 auto + min-width:0 自己吃掉
-     差额并在末尾出省略号（实测截到"…缓存命…"，tok 数字仍完整可读）。
-     高度仍是 28px：composer 的底部占位（8px + 28px）不变，其它几何不跟着动。 */
+     Client marks the row with [data-mobile-nav="stats"]. Fixed 28px strip:
+     one line, no horizontal scroll — shrink type/gaps and ellipsize the
+     trailing group (dock context % already eats ~75px; full metrics will
+     not fit). First group stays intact; last group flex-shrinks with
+     ellipsis. Height stays 28px so composer bottom reserve is unchanged. */
 
   [data-mobile-nav="stats"] {
     display: flex !important;
@@ -380,19 +303,17 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     margin-right: 6px !important;
     padding: 0 !important;
   }
-  /* 第一组（轮次·步数·tok/s）保持完整。 */
+  /* First group (turns / steps / tok/s) stays intact. */
   [data-mobile-nav="stats"] > *:first-child {
     flex: 0 0 auto !important;
     width: max-content !important;
     min-width: max-content !important;
     max-width: none !important;
   }
-  /* 最后一组（tok 总量·缓存命中）吃掉剩余宽度，末尾省略号。
-     2026-09-23 第二版修正：第一版把整组改成 display:block + 子元素 inline，
-     结果药丸里的图标变成 inline、基线对齐错位（店主："图标都出现位移"）。
-     这版保持 flex 对齐，只让药丸**内部的文字 span** 收缩 + 出省略号；
-     图标 svg 固定不缩。另外把两组药丸的左右内边距压到 6px、组间距压到 4px，
-     抠出来的宽度全部让给第二组（实测它原本只分到 76px 而需要 156px）。 */
+  /* Last group (tok total / cache) absorbs leftover width and ellipsizes.
+     Keep flex alignment — an earlier display:block pass misaligned pill
+     icons. Only the inner text span shrinks; svg does not. Tighter pill
+     padding/gaps reclaim width for this group. */
   [data-mobile-nav="stats"] > *:last-child {
     display: flex !important;
     align-items: center !important;
@@ -425,8 +346,8 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     min-width: 0 !important;
     max-width: 100% !important;
   }
-  /* 药丸内部的 span/svg 有自己的字号（宿主 .pill 自带），只在外层设 10px 不会被
-     继承进去 —— 真机上第二组仍差 ~20px 被省略号切掉，所以这里显式压到内部。 */
+  /* Host .pill sets its own font-size; set 10px on the inner tree too so
+     the second group actually gains the budgeted width. */
   [data-mobile-nav="stats"] button,
   [data-mobile-nav="stats"] button span,
   [data-mobile-nav="stats"] button svg,
@@ -440,9 +361,9 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   [data-mobile-nav="stats"] * {
     white-space: nowrap !important;
   }
-  /* 「上下文环」显示在输入框行的右簇（店主 2026-09-23 确认：
-     环要、百分比数字不要）。font-size:0 只塌掉文本、环 svg 有显式尺寸不受
-     影响；绝对定位盖在自建占位上（见下方 #104 注释），不再搬动节点。 */
+  /* Context ring in the composer right cluster: keep the ring, hide the
+     percentage text (font-size:0). Absolutely position over a plugin
+     reserve (#104) — do not reparent host nodes. */
   [data-mobile-nav="stats-ring"] {
     position: absolute !important;
     flex: 0 0 auto !important;
@@ -455,8 +376,8 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     box-shadow: none !important;
     border: 0 !important;
   }
-  /* 文本要连**药丸内部**一起塌掉：药丸自带字号，只在外层设 0 不继承进去，
-     真机上会留下半个 "46"。整棵子树 font-size:0，环 svg 用显式 px 不受影响。 */
+  /* Collapse text inside the pill too (host pill font-size does not
+     inherit from the outer 0). Ring svg uses explicit px. */
   [data-mobile-nav="stats-ring"],
   [data-mobile-nav="stats-ring"] * {
     font-size: 0 !important;
@@ -467,37 +388,29 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     gap: 0 !important;
     min-width: 0 !important;
     width: auto !important;
-    /* 宿主给药丸画的灰底/描边在输入框行里显得比环大一倍（店主："圆圈占了很多空间"），
-       全去掉，只留环本身。 */
+    /* Strip host pill chrome (fill/border) — it read larger than the ring. */
     background: transparent !important;
     box-shadow: none !important;
     border: 0 !important;
   }
   [data-mobile-nav="stats-ring"] svg {
     display: inline-block !important;
-    /* 2026-09-29 验收定稿（issue #140）：16px 难瞄准、24px 过大、20px 仍偏大，
-       店主拍板 18px；与 26×26 命中盒（见 layout.css.ts 的环规则）匹配。
-       增宽由尾道左侧富余吸收，按键间距不变。 */
+    /* Ring size 18px (#140): balances tap target vs clutter; matches the
+       26×26 hit box in layout.css.ts. Width comes from trailing-lane slack. */
     width: 18px !important;
     height: 18px !important;
     flex: 0 0 auto !important;
   }
-  /* 轨道深化（2026-09-29 验收，issue #140）：宿主轨道只有 12% 黑，环放大到
-     24px 后深灰进度弧显得像残缺的加载圈（店主「什么玩意儿」）。加深到 25%
-     让 donut 成完整圆环——是「用量表」不是「spinner」。子串锚 class*=_track
-     与仓库哈希锚惯例一致，环标记内不会跨匹配（fill 类名不同）。
-     #142：25% 黑改按主题取色——color-mix 取 25% 标签色（label-primary 浅色
-     =近黑、暗色=近白），浅色维持 #140 验收观感，暗色自动翻成 25% 白（裸
-     rgba(0,0,0,.25) 在暗色下不可见，环又退回残缺加载圈）；token 缺失时 var
-     兜底 #000 与原值等价。border 族没有 25% 等价档，纯 var 兜底会让浅色回
-     归宿主 12%，故用 color-mix；宿主 CSS 已用同款 color-mix+var 组合。 */
+  /* Deepen track stroke (#140/#142): host 12% black looked like a broken
+     spinner once the ring grew. 25% via color-mix on label-primary tracks
+     theme (light≈black, dark≈white); bare rgba(0,0,0,.25) vanishes in dark
+     mode. class*=_track matches repo hash-anchor convention. */
   [data-mobile-nav="stats-ring"] [class*="_track"] {
     stroke: color-mix(in srgb, var(--dsw-alias-label-primary, #000) 25%, transparent) !important;
   }
-  /* 环与 TPS 读数不再搬动宿主 React 节点（#104：搬动后宿主卸载调 removeChild
-     对不上父节点直接抛 NotFoundError，SlotErrorBoundary 把整个 composer 槽位
-     清空）。节点留在 React 渲染的原位，可见槽位由插件自建占位顶住，宿主节点
-     绝对定位盖在占位上；占位是插件节点，宿主重建/卸载都不经过它。 */
+  /* Do not reparent ring/TPS host nodes (#104: removeChild NotFoundError
+     emptied the composer slot). Leave React's tree; cover with plugin
+     reserves and absolute-position the host nodes onto them. */
   [data-mobile-nav="stats-ring-reserve"],
   [data-mobile-nav="stats-tps-reserve"] {
     visibility: hidden !important;
@@ -506,8 +419,7 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   [data-mobile-nav="stats-ring-reserve"] {
     flex: 0 0 auto !important;
     display: inline-block !important;
-    /* 18px 与定稿的环（上方 svg 规则）同尺寸：占位顶住的槽位即环的落点，
-       尾道左侧富余吸收增宽，按键间距不变。 */
+    /* Reserve matches the 18px ring so the landing slot stays put. */
     width: 18px !important;
     height: 18px !important;
     margin: 0 2px 0 0 !important;
@@ -533,8 +445,8 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     text-overflow: ellipsis !important;
     min-width: 0 !important;
   }
-  /* overlay 的定位上下文：宿主自己没定位时才生效（无 !important，宿主样式随时
-     可以接管；stats-line 每帧按真实 positioned ancestor 计算，不受影响）。 */
+  /* Positioning context for overlays when the host parent is unpositioned
+     (no !important — host may take over; stats-line measures real ancestors). */
   [data-mobile-nav="stats-ring-dock"],
   [data-mobile-nav="stats-tps-row"] {
     position: relative;
@@ -617,19 +529,12 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     padding-top: 44px !important;
   }
 
-  /* ---------- dsh-meme 表情选择卡片：右缘安全距离 ----------
-     The meme picker (conversation.input.overlay, id meme-picker) is
-     absolutely positioned left:0 inside the composer's overlay anchor with
-     width:min(360px,90vw). That 90vw resolves against the VIEWPORT, not the
-     anchor, and with the picker's own padding+border the border-box
-     (377px on a 390px phone) exceeds the 356px anchor — the card's right
-     edge then runs past the anchor and off the right screen edge, while the
-     left edge keeps the anchor's 17px safe inset. Stretch the card to the
-     anchor on both sides (left/right 0, width auto, border-box) so the
-     right gap mirrors the left; cap at the card's original border-box size
-     (360px content + 24px padding + 2px border) so tablets keep the
-     intended card width instead of stretching. Desktop is untouched: the
-     frame marker only exists below 1024px. */
+  /* ---------- dsh-meme picker: right-edge safe inset ----------
+     The meme picker is absolute left:0 with width:min(360px,90vw). 90vw
+     resolves against the viewport, so the border-box can exceed the overlay
+     anchor and run off the right edge. Stretch to the anchor (left/right 0,
+     width auto) and cap at the original border-box so tablets keep the
+     intended width. Frame-scoped — desktop untouched. */
   [data-mobile-nav="frame"] .meme-picker {
     left: 0 !important;
     right: 0 !important;
@@ -638,12 +543,9 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     max-width: 386px !important;
   }
 
-  /* dsh-meme 网格缩略图：自适应铺满卡片,保留 8px 间隙。
-     dsh-meme 的 .mp-grid 是 flex-wrap + 固定 76px 的 .mp-cell(行内 style 再压到 74px):
-     3 列(390px 手机)时每行右侧剩 ~78px 空白,卡片没有铺满。换成响应式 grid:
-     repeat(auto-fill, minmax(64px,1fr)) 让列数随可用宽度伸缩、卡片 width:100% +
-     aspect-ratio:1 随轨道自适应(方形,cover 裁切不变),gap 仍是 dsh-meme 的 8px。
-     行内 width/height 用 !important 覆盖;手机端约 4 列、平板端约 5 列,均满宽。 */
+  /* Meme grid: responsive auto-fill instead of fixed 76px cells that left
+     a dead strip on phone. aspect-ratio:1; keep 8px gap; !important beats
+     inline width/height. */
   [data-mobile-nav="frame"] .meme-picker .mp-grid {
     display: grid !important;
     grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)) !important;
@@ -655,8 +557,8 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     height: auto !important;
     aspect-ratio: 1 !important;
   }
-  /* dsh-meme 网格右侧滚动条：默认 WebKit 滚动条在手机上看太粗,压成 4px
-     细条——保留滚动指示又不占横向空间,thumb 圆角浅色、轨道透明。 */
+  /* Meme grid scrollbar: thin 4px WebKit thumb — keep the affordance
+     without eating horizontal space. */
   [data-mobile-nav="frame"] .meme-picker .mp-grid::-webkit-scrollbar {
     width: 4px !important;
   }
@@ -668,19 +570,12 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     background: transparent !important;
   }
 
-  /* ---------- agent preset 模式选择菜单：手机端紧凑底部弹层 ----------
-     The official agent-preset menu (role=menu, portal mounted on body) uses
-     position:fixed + max-height:820px + bottom:12px, so on a phone it
-     stretches from the trigger down to 12px above the screen bottom —
-     effectively filling the screen. Turn it into a polished bottom sheet:
-     cap the height, center it horizontally (the official max-width 360px
-     left-anchors at left:12px, leaving 12/18px asymmetric gaps), add a
-     drag-handle affordance, breathing room, and softer top radius; the
-     inner viewport keeps scrolling. Scoped to the agent-preset item class
-     (cubgiG_*) so other role=menu dropdowns (model/access mode) are
-     untouched. Desktop ≥1024px is outside the media query, so it keeps the
-     official large dropdown. */
-  /* agent-preset 菜单依赖 @deepseek-ai/dsh-client-ui-agent-preset 的 CSS Module 哈希 (cubgiG_*)，升级该包时需验证此选择器是否仍有效 */
+  /* ---------- Agent-preset menu: compact bottom sheet on phone ----------
+     Official menu is fixed + max-height:820px + bottom:12px and fills the
+     phone. Cap height, center horizontally, drag-handle, softer radius;
+     inner viewport still scrolls. Scoped to cubgiG_* items so other menus
+     are untouched. */
+  /* Agent-preset menu depends on cubgiG_* CSS-module hashes — re-verify after upgrading that package. */
   [role="menu"]:has([class*="cubgiG_item"]) {
     top: auto !important;
     left: 50% !important;
@@ -705,9 +600,8 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     background: var(--dsw-alias-border-l2, rgba(0, 0, 0, .22)) !important;
     pointer-events: none;
   }
-  /* 菜单内部滚动条：默认 WebKit 滚动条在竖屏太粗,会占 ~15px 宽度把文字描述
-     挤窄,导致描述换行/截断不自然。压成 4px 细条(与表情网格一致),文字区域
-     恢复自适应宽度。 */
+  /* Menu viewport scrollbar: thin 4px (same as meme grid) so descriptions
+     are not squeezed by a fat WebKit thumb. */
   [role="menu"]:has([class*="cubgiG_item"]) [class*="_viewport_"] {
     scrollbar-width: thin !important;
     scrollbar-color: var(--dsw-alias-label-tertiary, rgba(0, 0, 0, .3)) transparent !important;
@@ -723,13 +617,13 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
     background: transparent !important;
   }
 
-/* 搜索框底部间距修复 */
+/* Market tab search row: extra bottom padding. */
   [aria-modal="true"] [class*="tabSearchRow"] {
   padding: 2px 4px 16px !important;
   }
 
 
-  /* ===== 已安装列表：路径单行截断 ===== */
+  /* Installed list: single-line path ellipsis. */
   [class*="irow"]:not([class*="irowActions"]):not([class*="irowTrailing"]) > div > [class*="spec"] {
   white-space: nowrap !important;
   overflow: hidden !important;
@@ -743,7 +637,7 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   text-overflow: ellipsis !important;
   max-width: 100% !important;
   }
-  /* ===== 已安装列表：手机端纵向重排 ===== */
+  /* Installed list: vertical reflow on phone. */
   [class*="irow"]:not([class*="irowActions"]):not([class*="irowTrailing"]) {
     flex-wrap: wrap !important;
     align-items: center !important;
@@ -772,7 +666,7 @@ export const COMPAT_CSS = `@media (max-width: 1023px) and (pointer: coarse) {
   [class*="irow"]:not([class*="irowActions"]):not([class*="irowTrailing"]) > [class*="grow"] {
     order: 0 !important;
   }
-  /* ===== 市场卡片图片容器：横向滚动 ===== */
+  /* Market card screenshots: horizontal scroll. */
   [data-mobile-nav="frame"] [class*="cardShots"] {
   display: flex !important;
   flex-wrap: nowrap !important;

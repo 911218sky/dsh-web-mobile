@@ -11,17 +11,12 @@ export interface MobileDrawerFooterProps extends PropsRuntime<'sidebar.footer.ac
 }
 
 /**
- * Mobile-only drawer footer action, relocated from the session header to the
- * drawer footer (beside Settings): the official session-log-export
- * controller, so the progress/result dialog is shared with the desktop flow.
- * Hidden entirely on wide screens (CSS media query).
+ * Mobile-only drawer footer: session-log export (shared with the desktop
+ * dialog). Hidden on wide screens via CSS.
  *
- * The Files entry that used to live here was removed on 2026-09-17: while the
- * drawer is open neither the host (it refuses to expand the right sidebar)
- * nor the third-party drawer-dismiss shim (it swallows every frame-interior
- * click outside the drawer, programmatic ones included) lets a click reach
- * the right-sidebar opener, so the entry could only ever close the drawer.
- * Contract: docs/specs/2026-09-17-sidebar-files-coexistence-design.md
+ * Files entry removed — while the drawer is open, neither the host nor the
+ * dismiss shim lets a click reach the right-sidebar opener. See
+ * docs/specs/2026-09-17-sidebar-files-coexistence-design.md.
  */
 export function MobileDrawerFooter({ useSessions, downloadSessionLog, t }: MobileDrawerFooterProps) {
   const sessionId = useSessions((state) => currentSessionIdOf(state))

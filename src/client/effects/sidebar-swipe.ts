@@ -4,171 +4,97 @@ import { markGestureConsumed, consumeIfGestured, markStrokeLocked, clearStrokeLo
 import { fadeOverlayOut } from './overlay-backdrop-fab.ts'
 
 /**
- * Sidebar drawer swipe gestures (B 档 hybrid follow, per the 2026-08-29
- * controlled upgrade of docs/specs/2026-08-27-sidebar-swipe-gestures.md).
+ * Sidebar drawer and files-panel swipe gestures (hybrid follow).
  *
- * Three gestures:
- * - edge swipe-in: the pointer goes down within the start zone (45% of the
- *   left edge) and the drawer is closed → the host state is flipped AT
- *   AXIS-LOCK (early commit) while the drawer is pinned in its closed slot,
- *   so the REAL open subtree mounts off-screen and then follows the finger
- *   out of the slot (see startFollow for why the flip has to come first);
- * - content swipe-toward-slot: the pointer goes down inside the open drawer
- *   and drags LEFT (LTR) → the drawer FOLLOWS the finger (inline translateX,
- *   transition:none) and releases into the host's transition;
- * - content swipe-out (legacy): drag RIGHT inside the open drawer → no
- *   follow (A 档 semantics preserved verbatim), release classifies.
+ * Edge swipe-in early-commits host open at axis-lock while the drawer stays
+ * pinned off-screen, then follows the finger. Open-drawer leftward drag
+ * follows into the slot; rightward close is classify-only (legacy). Release
+ * uses classifySwipe (distance OR velocity); commit is
+ * `ctx.layout.toggleSidebar()`. Follow rides the host transition: inline
+ * `transition:none` + translateX during the stroke, then drop styles and
+ * retarget in the same task (no paint between).
  *
- * The release decision is UNCHANGED from A 档: classifySwipe (distance ratio
- * OR recent-window velocity) — after a follow stroke, dx IS the followed
- * position, so the same function decides complete vs spring-back. The commit
- * is still just `ctx.layout.toggleSidebar()`. The follow mechanics ride the
- * host transition instead of fighting it: during the stroke the drawer gets
- * inline `transition: none` + translateX; on release the inline styles are
- * dropped and the commit retargets the host transition IN THE SAME TASK (no
- * paint in between), so the drawer animates from the finger position to the
- * final state with zero custom animation code.
- *
- * Review constraints honored (spec 2026-08-27 second review): the backdrop
- * stays binary (appears at commit — never opacity-followed, 缺陷 2); a modal
- * rising mid-stroke reverts the drawer every move event (缺陷 1's per-frame
- * guard); the OPEN final state must end with transform:none (the containing
- * block invariant for fixed descendants) — a transitionend-free cleanup pair
- * (inline clear + host value) guarantees it because the host open rule is
- * transform:none. No gesture-layer DOM, no setPointerCapture. Zero transform
- * writes remain true for the LEGACY rightward-close path.
- *
- * Coexistence with the host's overlay interactions (document capture click /
- * pointerup) is two-layered via gesture-guard.ts: (1) tryLock publishes an
- * axis-lock flag the instant the stroke locks horizontal — during
- * pointermove, strictly before any pointerup — and the host handlers yield
- * on it first, because they are registered EARLIER and the post-release
- * consume marks do not exist yet on the stroke's own release event (audit
- * S0: the host toggled first and the gesture toggled back, net zero);
- * (2) a classified swipe additionally marks its target chain consumed so
- * the synthetic click after the stroke can never toggle twice or navigate
- * a row.
+ * Backdrop stays binary; mid-stroke modals revert per move; open final state
+ * ends at transform:none (containing-block for fixed descendants). Coexists
+ * with host overlay handlers via gesture-guard: axis-lock before pointerup,
+ * plus consume marks for synthetic clicks. Disposer aborts the live stroke.
  */
 
 /**
- * Start-zone width as a FRACTION of the viewport width: the pointer counts
- * as "from the left edge" anywhere inside the left (RTL: right) strip this
- * wide. The zone STAYS at 45% (2026-09-11 user decision): a brief seventh
- * pass shrank it to 0.25 for the draggable-widget conflict and was rolled
- * back the same day — the user keeps the "anywhere in the left half" feel
- * and the conflict is handled by yield signals instead (the
- * data-mobile-nav-dragging cooperation mark + the floating-widget positional
- * heuristic, see dragMarkYields/findFloatingWidget).
- * History of the constant: 24px (hotspot era) → 48px (third pass, fixed
- * "识别成对话内容滚动") → 96px (fourth pass — at that point the zone also
- * finally cleared Chrome Android's EDGE_WIDTH_DP=48dp history-navigation
- * trigger strip, whose strokes the browser claims and pointercancels; the
- * browser gesture itself is suppressed by the root overscroll-behavior-x:
- * none rule in layout.css.ts) → 0.45×viewport (fifth pass; brief 0.25
- * experiment rolled back) — this value.
- * Safety at this width: the release classification (0.16×w travel OR
- * 0.45px/ms velocity) still gates the commit, so widening cannot open on a
- * tap; vertical strokes reset at axis lock (≤8px of prevented movement) and
- * hand scrolling back; strokes beginning inside genuinely horizontally
- * scrollable containers are excluded from the zone entirely — see
- * findHorizontalScroller (at 45% the stats line / message code blocks sit
- * well inside the strip, so that guard is load-bearing).
+ * Start-zone width as a fraction of viewport: left (RTL: right) strip counts
+ * as "from the edge". Wide enough to clear Chrome Android's ~48dp history-nav
+ * edge strip (browser claims those strokes and pointercancels). Widget
+ * conflicts yield via data-mobile-nav-dragging / findFloatingWidget instead of
+ * shrinking the zone. Release classification still gates commit; vertical
+ * strokes reset at axis lock; horizontal scrollers are excluded
+ * (findHorizontalScroller — load-bearing at this width).
  */
 const START_ZONE_RATIO = 0.45
 
 /**
- * The zone in pixels for a given viewport width (pure, exported for the
- * decision-table tests). Rounded so the probe boundary assertions stay
- * integral (390px → Math.round(175.5) = 176).
+ * Zone width in px for a given viewport (pure, for decision-table tests).
+ * Rounded so boundary assertions stay integral.
  */
 export function startZonePxFor(viewportWidthPx: number, ratio: number = START_ZONE_RATIO): number {
   return Math.round(viewportWidthPx * ratio)
 }
 /**
- * Axis-lock threshold: once the stroke's dominant axis has moved this far,
- * the axis is decided. Horizontal-dominant (|dx| > |dy|) locks the stroke
- * to X (a swipe); vertical-dominant abandons it to native scrolling.
- * Replaces the old 4px slop + 1.5× direction-bias pair — a 1.5× bias
- * rejected natural ~45° diagonal swipes (the other half of the
- * "识别成滚动" report). MUI uses a 3px uncertainty threshold; 8px is a
- * comfortable margin against tap jitter while still deciding in the first
- * ~16ms of movement.
+ * Axis-lock threshold: once the dominant axis moves this far, the axis is
+ * decided. Horizontal (|dx| > |dy|) locks to X; vertical abandons to native
+ * scroll. 8px tolerates tap jitter while still deciding within ~16ms.
  */
 const LOCK_PX = 8
-/** Distance thresholds as a fraction of the viewport width.
- *  Second tuning pass (2026-08-27, "识别成滚动" feedback): 0.16 open = ~62px
- *  on a 390px phone, 0.13 close = ~51px. Keep the open threshold above the
- *  close threshold so an accidental reverse swipe cannot re-open. */
+/** Distance thresholds as a fraction of viewport. Open stays above close so
+ *  an accidental reverse swipe cannot re-open. */
 const OPEN_DISTANCE_RATIO = 0.16
 const CLOSE_DISTANCE_RATIO = 0.13
 /** Velocity window: most-recent-60ms instantaneous speed (end-segment slope). */
 const VELOCITY_WINDOW_MS = 60
-/** px/ms speed thresholds for open / close (MUI uses 0.45). */
+/** px/ms speed thresholds for open / close. */
 const OPEN_VELOCITY = 0.45
 const CLOSE_VELOCITY = 0.45
 /** Covers the .28s CSS transition; prevents reverse-gesture double-toggles. */
 const COOLDOWN_MS = 350
-/** How long a consumed gesture mark stays live (covers the synthetic click).
- * Short by design: browsers dispatch the synthetic click within tens of ms,
- * while iOS shells suppress it entirely — a long window with no delivery
- * would let the marks swallow the user's next genuine tap (dead-tap bug).
- * When upTo is absent from the release chain (edge swipe-in releases over
- * the main content) the mark walk reaches the document root, so this short
- * window is also the bound on how long any tap can be suppressed. */
+/**
+ * How long a consume mark stays live (covers the synthetic click). Short by
+ * design: browsers fire that click within tens of ms; iOS shells suppress it
+ * — a long window would swallow the next genuine tap. When `upTo` is absent
+ * the walk can reach the document root, so this also bounds tap suppression.
+ */
 const CONSUME_WINDOW_MS = 300
 /**
- * Rightward travel (from the stroke start) that arms the OPEN follow, i.e.
- * flips the host state early so the real drawer subtree mounts. Slightly
- * above LOCK_PX so an 8px horizontal twitch inside the wide start zone does
- * not mount-and-unmount 389 nodes; small enough that the dead zone before
- * the drawer's edge appears is imperceptible.
+ * Open follow arms at axis lock: tryLock already required LOCK_PX of
+ * horizontal-dominant travel, so no extra margin — delaying arm left a dead
+ * zone before the drawer edge appeared. Release still decides the outcome.
  */
-/** The open follow arms at the AXIS LOCK itself: tryLock already demanded
- * 8px of horizontal-dominant travel, so no extra twitch margin is needed —
- * every pixel between lock and arm was dead drag (user report 2026-08-29
- * 「右滑的过程中最开始有真空期,有一段卡的地方」). The release verdict still
- * decides the outcome, so arming early cannot commit a false open. */
 const OPEN_FOLLOW_ARM_PX = 8
 /**
- * The host's closed-slot offset as a PERCENTAGE of the drawer's own width
- * (`transform: translateX(-110%)` — the 10% overshoot hides the drawer's
- * shadow). Percentages are load-bearing for the open follow: the element
- * width changes mid-stroke when React swaps the collapsed rail for the real
- * drawer, and a percentage re-resolves against the current width while a
- * cached px value would not.
+ * Host closed-slot offset as a percentage of the drawer's own width
+ * (`translateX(-110%)` — 10% overshoot hides the shadow). Percentage is
+ * load-bearing for open follow: width changes when React swaps the rail for
+ * the drawer; % re-resolves, a cached px value would not.
  */
 const CLOSED_SLOT_PCT = 110
-/** Duration of the self-run terminal close animation. Matches the host's
- * .28s drawer transition so the handoff feels identical. */
+/** Self-run terminal close animation; matches the host's .28s transition. */
 const COMMIT_ANIM_MS = 280
-/** Percentage baseline of the OPEN-direction follow. The host's closed slot
- * is -110%, but following from -110% hides the first 28px of travel (the
- * 10% overshoot of the 280px drawer): the drawer stayed invisible until
- * ~dx=28 — user report 「刚开始会卡一下，之后才会拖出来」(measured: first
- * paint at dx=12 was left=-296, edge reached the viewport only at dx=28).
- * 101% keeps a small hidden margin (subpixel safety, would-be sliver at
- * exactly -100%) so the drawer edge answers the finger right after the
- * axis lock: at the 8px arm the edge is already ~5px on-screen (-102% left
- * only 2.4px and read as a vacuum; -110% hid the first 28px entirely).
- * The closed slot itself is only ever needed at TERMINAL states,
- * where CLOSED_SLOT_PCT is used verbatim. */
+/**
+ * Open-follow baseline percentage. Host closed slot is -110%, but following
+ * from -110% hides the first ~28px of travel (10% of a ~280px drawer). 101%
+ * keeps a small subpixel margin so the edge answers the finger right after
+ * axis lock. Terminal states still use CLOSED_SLOT_PCT verbatim.
+ */
 const OPEN_FOLLOW_BASE_PCT = 101
 
 /**
- * Files-panel (host right sidebar) gesture constants — the right-edge mirror
- * of the drawer layer (spec 2026-09-13-files-swipe-gesture-design.md).
- *
- * FILES_ZONE_RATIO mirrors the drawer's START_ZONE_RATIO: a narrow strip
- * cannot be used because Chrome Android's history-nav edge strip (~48dp)
- * pointercancels strokes starting inside it — the same reason the drawer
- * zone grew to 45% of the viewport.
+ * Files-panel (host right sidebar) gesture — right-edge mirror of the drawer.
+ * Zone ratio matches the drawer: a narrow strip hits Chrome Android's ~48dp
+ * history-nav edge and pointercancels.
  */
 const FILES_ZONE_RATIO = 0.45
 /**
- * Distance threshold as a fraction of the viewport width for BOTH files
- * directions (≈62px on a 390px phone). The drawer's separate close ratio
- * (0.13) exists because the close stroke follows into its slot; files
- * strokes have no follow, so one ratio serves both directions.
+ * Distance threshold (fraction of viewport) for both files directions.
+ * Drawer keeps a separate close ratio because close follows into its slot;
+ * files strokes have no follow, so one ratio serves both.
  */
 const FILES_DISTANCE_RATIO = 0.16
 /** px/ms velocity threshold for both files directions (drawer parity). */
@@ -176,9 +102,9 @@ const FILES_VELOCITY = 0.45
 
 /** Pointer id we are tracking (multi-touch is ignored). */
 let trackingPointer = 0
-/** True once the stroke is axis-locked (direction bias passed). */
+/** True once the stroke is axis-locked. */
 let tracking = false
-/** Stroke samples (x + timestamp) for the recent-window velocity. */
+/** Stroke samples (x + timestamp) for recent-window velocity. */
 let samples: Array<{ t: number; x: number }> = []
 /** Stroke origin (for the direction-bias check). */
 let startX = 0
@@ -190,36 +116,35 @@ let cooldownUntil = 0
 /** Element whose stroke was marked consumed (null = no live mark). */
 let consumedEl: Element | null = null
 
-/** B 档 follow state — one cache per stroke, set once at lock time so the
- * per-move writes never read layout (the spec review's rAF-contention
- * constraint). followDrawer stays bound for the whole stroke so a
- * released-then-re-engaged stroke (direction wobble) reuses the cache. */
+/**
+ * Follow cache — set once at lock so per-move writes never read layout.
+ * followDrawer stays bound for the whole stroke (direction wobble reuses it).
+ */
 let followDrawer: HTMLElement | null = null
 let followEngaged = false
 let strokeClosedTx = 0
 let strokeRtl = false
-/** True while an OPEN stroke has early-committed the host state (the drawer
- * subtree is mounted but pinned in its slot, following the finger). The
- * release must then either keep it open or toggle it back. */
+/**
+ * True while an open stroke early-committed the host (drawer mounted, pinned
+ * in slot, following). Release must keep open or toggle back.
+ */
 let openFollowArmed = false
-/** True once an open stroke has decided NOT to arm the follow (aborted arm:
- * a modal/takeover veto, a missing drawer) so it never retries mid-stroke. */
+/**
+ * True once open follow was refused this stroke (modal/takeover/missing
+ * drawer) so it never retries mid-stroke.
+ */
 let openFollowRefused = false
 
 /**
- * Which gesture family owns the current stroke: 'drawer' = the sidebar
- * gestures (every pre-existing behavior, untouched); 'files' = the
- * right-edge files-panel gesture (no follow painting, host-panel commit).
- * Written by beginStroke only; a fresh beginStroke always routes it.
+ * Gesture family for the current stroke: 'drawer' or 'files' (no follow;
+ * host-panel commit). Written by beginStroke only.
  */
 let strokeMode: 'drawer' | 'files' = 'drawer'
-/** Files-panel visibility at lock time (the mirror of lockDrawerOpen). */
+/** Files-panel visibility at lock time (mirror of lockDrawerOpen). */
 let lockFilesOpen = false
 /**
- * The files-panel toggle injected at install (openFilesPanel: it toggles by
- * the host's own control state, so open and close share one function).
- * Module-level because endStroke is a module-level function; the default is
- * a no-op so the node:test suite can import the module without a DOM.
+ * Files-panel toggle injected at install (open and close share one function).
+ * Module-level because endStroke is; default no-op for node:test import.
  */
 let filesToggleFn: () => boolean = () => false
 
@@ -236,37 +161,28 @@ export interface SwipeThresholds {
 
 /**
  * Pure decision: what does this stroke do, given the drawer state?
- * `dx`/`dy` are raw pointer deltas (RTL mirrors X through `rtl`), `velX` is
- * the raw recent-window X velocity. The stroke must be locked horizontal
- * (|dx| > |dy| and past the lock slop) and direction-consistent; then
- * distance OR velocity wins, with the drawer-state-specific threshold.
+ * `dx`/`dy` are raw pointer deltas (RTL mirrors X via `rtl`), `velX` is
+ * recent-window X velocity. Requires horizontal lock; then distance OR
+ * velocity wins with the drawer-state-specific threshold.
  */
 export function classifySwipe(
   t: SwipeThresholds & { viewportWidthPx: number; drawerOpen: boolean },
   m: { dx: number; dy: number; velX: number },
   rtl: boolean,
 ): 'open' | 'close' | 'none' {
-  // RTL mirrors the X axis: a rightward stroke (positive dx in LTR) is
-  // leftward in RTL. Normalize to the logical direction before judging.
+  // RTL mirrors X: normalize to logical direction before judging.
   const dx = rtl ? -m.dx : m.dx
   if (Math.abs(dx) <= t.lockPx) return 'none'
   if (Math.abs(dx) <= Math.abs(m.dy)) return 'none'
   if (t.drawerOpen) {
-    // BOTH horizontal directions close (2026-08-29 sixth round, user report
-    // 「根本没法左滑关闭」). Leftward is the natural "push it back into its
-    // slot" gesture — and the only one the follow animation actually paints
-    // (followTranslate's close branch follows leftward), so refusing it made
-    // the drawer track the finger and then spring back, i.e. the animation
-    // promised a close the classifier would not honor. Rightward stays
-    // accepted verbatim: four tuning rounds of muscle memory ride on it and
-    // failure scenarios B0/B1/B2 assert it. Nothing else competes for a
-    // horizontal stroke while the drawer is open, so accepting both costs no
-    // ambiguity.
+    // Both horizontal directions close: leftward is the follow-painted
+    // "push into slot" path; refusing it made the drawer track then spring
+    // back. Rightward stays accepted (legacy close). Nothing else competes
+    // for a horizontal stroke while the drawer is open.
     const travel = Math.abs(dx)
     if (travel / t.viewportWidthPx >= t.closeDistanceRatio) return 'close'
     const velX = rtl ? -m.velX : m.velX
-    // A fling only counts when it agrees with the stroke's own direction
-    // (same contradiction guard the open branch applies).
+    // Fling only counts when it agrees with the stroke's own direction.
     if (velX > 0 !== dx > 0) return 'none'
     return Math.abs(velX) >= t.closeVelocity ? 'close' : 'none'
   }
@@ -296,19 +212,13 @@ export interface FilesThresholds {
 }
 
 /**
- * Pure decision for the FILES gesture (right-edge zone), the mirror twin of
- * classifySwipe. RTL mirrors the X axis exactly like classifySwipe. The
- * verdict space extends the drawer's with `files` (the files-panel commit:
- * open the panel on a leftward stroke when everything is closed, close it on
- * a rightward stroke when it is open):
- * - leftward-logical strokes only ever mean "open the panel" and fire ONLY
- *   when panel and drawer are BOTH closed — the panel would mount under the
- *   open drawer (z-1100) and be invisible, so the stroke is 'none' (the
- *   2026-09-13 narrowing: a leftward stroke NEVER collapses anything);
- * - rightward-logical strokes close the VISIBLE TOP: drawer open → 'close'
- *   (the animated commitFollowClose path, gated on the drawer's own
- *   distance/velocity thresholds so both families judge a stroke alike);
- *   else panel open → 'files'; else 'none'.
+ * Pure decision for the files gesture (right-edge zone), mirror of
+ * classifySwipe. RTL mirrors X the same way. Verdicts add `files`:
+ * - leftward opens the panel only when panel and drawer are both closed
+ *   (otherwise 'none' — panel would mount under an open drawer and be
+ *   invisible; leftward never collapses anything);
+ * - rightward closes the visible top: drawer open → 'close' (animated
+ *   commitFollowClose, drawer thresholds); else panel open → 'files'.
  */
 export function classifyFilesSwipe(
   t: FilesThresholds,
@@ -328,13 +238,10 @@ export function classifyFilesSwipe(
     return -velX >= t.velocity ? 'files' : 'none'
   }
   if (t.drawerOpen) {
-    // Same gates as the drawer family's close (classifySwipe), including its
-    // CLOSE_DISTANCE_RATIO: this cell IS the drawer-close commit path, so the
-    // two families must judge one physical stroke alike. Without the gate the
-    // files zone's 45% reaches ~66px into the open drawer column at 390px,
-    // where a thumb resting on a row drifts ~8px sideways while scrolling —
-    // that closed the drawer AND consumed the tap. The leftward cell beside the
-    // drawer is already 'none', so this is what makes the families agree.
+    // Same gates as classifySwipe close (including CLOSE_DISTANCE_RATIO): this
+    // cell is the drawer-close path, so both families must judge one stroke
+    // alike. Without the gate, the files zone overlaps the open drawer and a
+    // slight sideways drift while scrolling would close and consume the tap.
     const closeRatio = t.drawerCloseDistanceRatio ?? t.distanceRatio
     if (dx / t.viewportWidthPx >= closeRatio) return 'close'
     if (velX <= 0) return 'none'
@@ -349,11 +256,9 @@ export function classifyFilesSwipe(
 }
 
 /**
- * Recent-window instantaneous velocity (px/ms) from the tail of the last
- * `windowMs` milliseconds of samples, up to `now`. Sliding X per ms between
- * the LAST TWO in-window samples — the end-of-stroke slope — so a long slow
- * drag then a quick flick reports the flick, not the drag average. Samples
- * older than the window are ignored. Fewer than two in-window samples → 0.
+ * Recent-window instantaneous velocity (px/ms): slope between the last two
+ * in-window samples so a slow drag then a flick reports the flick. Older
+ * samples ignored; fewer than two → 0.
  */
 export function slidingVelocity(
   samples: Array<{ t: number; x: number }>,
@@ -371,10 +276,8 @@ export function slidingVelocity(
 }
 
 /**
- * Geometric start-hit test: the pointer went down in the left edge start
- * zone (when the drawer is closed) or inside the drawer content area (when
- * open). Pure and viewport-relative so it is unit-testable; the runtime
- * variant additionally checks the drawer geometry via the DOM.
+ * Geometric start-hit: pointer down in the left-edge start zone. Pure and
+ * viewport-relative (unit-testable); runtime also checks drawer geometry.
  */
 export function hitTestStart(
   clientX: number,
@@ -387,9 +290,8 @@ export function hitTestStart(
 }
 
 /**
- * Geometric start-hit test for the FILES gesture: the pointer went down in
- * the RIGHT edge zone (RTL: LEFT) — the exact mirror of hitTestStart. Pure
- * and viewport-relative.
+ * Geometric start-hit for the files gesture: right-edge zone (RTL: left) —
+ * mirror of hitTestStart. Pure and viewport-relative.
  */
 export function filesZoneHit(
   clientX: number,
@@ -401,36 +303,27 @@ export function filesZoneHit(
   return edge >= 0 && edge <= zonePx
 }
 
-/** Which gesture family owns a stroke that begins while the drawer is OPEN.
- * Inside the drawer body the drawer family always wins (owner's rule
- * 2026-09-17: the drawer's own surface must answer a leftward drag, whether or
- * not the viewport-ratio files zone overlaps it — at 390px that zone starts at
- * x=214, inside the 280px drawer); outside the body the right zone keeps its
- * files routing and its deliberate leftward 'none' verdict (2026-09-13
- * narrowing). */
+/**
+ * Gesture family for a stroke that begins while the drawer is open. Inside
+ * the drawer body the drawer family always wins (own surface must answer
+ * leftward drag even where the files zone overlaps). Outside, the right zone
+ * keeps files routing and its leftward 'none' verdict.
+ */
 export function openStateStartMode(insideDrawer: boolean, inFilesZone: boolean): 'drawer' | 'files' {
   return insideDrawer || !inFilesZone ? 'drawer' : 'files'
 }
 
 /**
- * Pure follow mapping (B 档): the translateX (px) to paint for a stroke
- * sample, or null when THIS sample has no follow. `closedTx` is the signed
- * closed-slot translateX (negative LTR, positive RTL — the drawer slides
- * off the anchored edge); `dx` is the RAW pointer delta; normalization
- * mirrors classifySwipe (`d = rtl ? -dx : dx`, rightward-logical positive =
- * toward open).
+ * Pure follow mapping: translateX (px) for a stroke sample, or null when
+ * this sample has no follow. `closedTx` is the signed closed-slot translateX
+ * (negative LTR, positive RTL); `dx` is the raw pointer delta; normalization
+ * mirrors classifySwipe (rightward-logical = toward open).
  *
- * Decision table (C3 hybrid, 2026-08-29 user decision):
- * - close stroke (drawer open): LEFTWARD-logical travel drags the drawer
- *   toward its closed slot, clamped at the slot; rightward-logical → null
- *   (the legacy A 档 close owns that direction — no follow, momentum-honest);
- * - open stroke (drawer closed): NOT used at runtime — the open direction
- *   follows through `followOpenTransform` instead, because its baseline has
- *   to stay a percentage across the subtree swap (see that function). The px
- *   mapping is kept pure and tested as the reference semantics;
- * - a zero closed slot (degenerate host without a closed transform) yields
- *   a constant 0 — the follow degrades to a no-op instead of inventing
- *   travel.
+ * Close (drawer open): leftward-logical follows toward the slot (clamped);
+ * rightward → null (legacy classify-only close). Open (drawer closed): not
+ * used at runtime — `followOpenTransform` keeps a percentage baseline across
+ * the subtree swap; this px mapping is the tested reference. Degenerate zero
+ * slot yields 0 (no-op) rather than inventing travel.
  */
 export function followTranslate(
   closedTx: number,
@@ -452,19 +345,14 @@ export function followTranslate(
 }
 
 /**
- * Pure follow mapping for the OPEN direction (B 档, 2026-08-29 second pass).
- * Returns the CSS transform to paint for a stroke that has already
- * early-committed the host state, or null when this sample has no follow
- * (leftward-logical travel, i.e. pulled back past the stroke origin).
+ * Pure follow mapping for the open direction after early host commit, or
+ * null when pulled back past the stroke origin (leftward-logical).
  *
- * The baseline is the host's own PERCENTAGE slot (`translateX(-110%)`), kept
- * symbolic on purpose: at arm time the element is still the ~206px collapsed
- * rail and a frame later React has swapped in the ~280px drawer. A px
- * baseline captured before the swap would leave the wider drawer 74px
- * off-position (its slot is -308px, not -227px); `-110%` re-resolves against
- * the element's current width on every frame, so the same declaration is
- * correct across the mount. `min()`/`max()` clamp the open end so overshoot
- * cannot drag the drawer past its resting position.
+ * Baseline is the host's percentage slot (`translateX(-110%)`): at arm time
+ * the element is still the collapsed rail; a frame later React swaps in the
+ * wider drawer. A px baseline captured before the swap would be wrong;
+ * percentage re-resolves against current width. `min()`/`max()` clamp so
+ * overshoot cannot pass the resting position.
  */
 export function followOpenTransform(travelPx: number, rtl: boolean): string | null {
   const t = rtl ? -travelPx : travelPx
@@ -487,19 +375,11 @@ export interface SwipeChainNode {
 }
 
 /**
- * Pure walk: the innermost element of the chain (self included) that is a
- * GENUINELY horizontally scrollable container — overflow-x auto/scroll AND
- * content actually overflowing (scrollWidth > clientWidth + 1; the +1
- * absorbs subpixel rounding). A stroke beginning inside one belongs to that
- * scroller: the browser claims the horizontal pan (pointercancel on real
- * devices) and the release classification must neither compete with it nor
- * preventDefault it away — prevention is what would break the strip's native
- * scrolling near the left edge once the start zone grew to 45% of the
- * viewport (the stats
- * line spans the full width; message code blocks are overflow-x:auto too).
- * CDP failure scenario C1 pins this contract. overflow-x:hidden/clip never
- * match: clipped content cannot pan, so a horizontal stroke there stays free
- * for the gesture layer.
+ * Pure walk: innermost chain node that is genuinely horizontally scrollable
+ * (overflow-x auto/scroll and scrollWidth > clientWidth + 1 for subpixel).
+ * A stroke starting inside one belongs to that scroller — do not compete or
+ * preventDefault (would break native pan near the left edge at 45% zone).
+ * overflow-x hidden/clip never match; those strokes stay free for gestures.
  */
 export function findHorizontalScroller(node: SwipeChainNode | null): SwipeChainNode | null {
   let cur = node
@@ -530,14 +410,10 @@ function drawerOpen(): boolean {
 }
 
 /**
- * True when the host's right sidebar files panel is currently VISIBLE (any
- * form: fullscreen on phones, docked on tablets). Measured on 0.1.5: the
- * panel element is persistent — the closed fullscreen form stays in the DOM
- * at `visibility: hidden` with its rect pushed to x=viewport-width — so
- * presence alone is not the panel-state read. Detect the open state by the
- * three ways the host can hide it (visibility / display / pushed-off rect);
- * a host without this panel keeps returning false and the explorer fallback
- * applies.
+ * True when the host's right sidebar files panel is visible (fullscreen or
+ * docked). The panel element is persistent when closed (`visibility: hidden`,
+ * rect pushed off-screen), so presence alone is not the state read — check
+ * visibility / display / rect. Hosts without the panel return false.
  */
 function filesPanelOpen(): boolean {
   const panel = document.querySelector('[data-sidebar-right-panel]')
@@ -573,12 +449,12 @@ function modalOpen(): boolean {
   return document.querySelector('[aria-modal="true"]') !== null
 }
 
-/** True when a full-screen takeover (taskboard / ssh) owns the frame, or any
- *  host conversation.view overlay (trajectory tab or similar — they set the
- *  generic `data-conversation-composer-overlay` attribute on their root) is
- *  open. In both cases the drawer edge-swipe gestures yield so horizontal
- *  content scrolling wins the left-edge start zone; the FAB still opens the
- *  drawer. */
+/**
+ * True when a full-screen takeover (taskboard / ssh) or a host
+ * conversation.view overlay (`data-conversation-composer-overlay`) owns the
+ * frame. Edge-swipe yields so content scrolling wins the start zone; FAB
+ * still opens the drawer.
+ */
 function takeoverActive(): boolean {
   return (
     document.documentElement.hasAttribute('data-dsh-taskboard-active') ||
@@ -589,24 +465,14 @@ function takeoverActive(): boolean {
 
 /**
  * Whether a live, non-collapsed text selection owns the pointer stroke.
- * A selection-handle drag (and a long-press selection that appears between
- * pointerdown and the axis lock) is horizontally dominant and geometrically
- * indistinguishable from a drawer swipe — the browser must keep it (#43,
- * iPad WebKit). Feature-detected so the node:test suite can import the
- * predicate without a DOM.
+ * Selection-handle drags are horizontally dominant and indistinguishable from
+ * a swipe — the browser must keep them (iPad WebKit). Feature-detected for
+ * node:test without a DOM.
  *
- * TWO selection models must be read, because they are disjoint:
- * - the DOCUMENT selection (window.getSelection) covers message-flow text
- *   and contenteditable hosts;
- * - a selection inside a text control lives on the ELEMENT as
- *   selectionStart/selectionEnd and is INVISIBLE to window.getSelection —
- *   measured on the composer during a hijacked stroke (#44, real iPad):
- *   taStart=0 taEnd=20 while the document selection reported isCollapsed.
- *   Reading only the document selection let the swipe layer arm, lock, and
- *   collapse the composer selection the user was extending.
- * document.activeElement is the right anchor for the element model: a handle
- * drag keeps focus inside the control, and it also covers strokes whose
- * points land outside the control's own box.
+ * Two disjoint models: document selection (message text / contenteditable),
+ * and text-control selectionStart/End (invisible to getSelection). Reading
+ * only the document model let the swipe layer collapse a composer selection
+ * being extended. document.activeElement anchors the element model.
  */
 export function selectionOwnsStroke(): boolean {
   if (typeof window === 'undefined') return false
@@ -617,11 +483,8 @@ export function selectionOwnsStroke(): boolean {
   if (el === null) return false
   const tag = el.tagName
   if (tag !== 'TEXTAREA' && tag !== 'INPUT') return false
-  // Input types without a text selection (checkbox, number, email, …) report
-  // null here — measured in Chromium — and older WebKit/Gecko throw
-  // InvalidStateError instead. Both mean "no text selection is being
-  // dragged", never "the control owns this stroke", so neither may be
-  // allowed to escape from a pointer handler.
+  // Types without a text selection report null; older WebKit/Gecko throw
+  // InvalidStateError. Both mean "no selection dragged", not "owns stroke".
   try {
     const { selectionStart: start, selectionEnd: end } = el
     return typeof start === 'number' && typeof end === 'number' && start !== end
@@ -636,22 +499,11 @@ function onCooldown(): boolean {
 }
 
 /**
- * Draggable-element yield mark (2026-09-11, 桌宠拖动冲突 D 方案的 C 侧):
- * a dragging component (desktop pet, floating ball, drag-to-reorder, …)
- * marks itself with `data-mobile-nav-dragging` while its drag is live — on
- * the element the pointer is holding (or any ancestor), or on
- * documentElement/body as a global mark when the dragged node moves around
- * or the dragger prefers not to touch the node tree. The gesture layer
- * reads the mark at pointerdown AND at every axis-lock attempt before the
- * stroke locks: a mark present at either point yields the whole stroke (no
- * drawer arm, no touchmove preventDefault) because the two layers would
- * otherwise both answer the same pointer stream — the exact bug the probe
- * reproduces (draggable-conflict-probe pet.t1: a 56px floating ball dragged
- * rightward inside the fifth-pass 45% zone opened the drawer mid-drag).
- * Semantics mirror selectionOwnsStroke: the mark must be up by the first
- * few move events (a pointerdown handler is the natural place); once the
- * stroke axis-locks the gesture stays committed — a mark appearing
- * mid-locked-stroke does not unwind an already-armed open follow.
+ * Yield when a live drag marks `data-mobile-nav-dragging` on the held
+ * element (or ancestor), or on documentElement/body as a global mark.
+ * Checked at pointerdown and every axis-lock attempt: otherwise both layers
+ * answer the same pointer and the drawer opens mid-drag. Once axis-locked,
+ * a late mark does not unwind an armed open follow.
  */
 function dragMarkYields(event: PointerEvent): boolean {
   if (document.documentElement.hasAttribute('data-mobile-nav-dragging')) return true
@@ -662,33 +514,18 @@ function dragMarkYields(event: PointerEvent): boolean {
   )
 }
 
-/** Upper bound (px) of the "small floating widget" positional heuristic.
- * The real-world reference is dsh-pet's floating ball (kz2Bea_float,
- * position:fixed, measured 148x160 on the live profile page) — 160 would
- * sit exactly on that widget's edge; 200 leaves headroom for sibling
- * plugin widgets while a full-screen overlay (backdrop, sheets, dialogs)
- * still cannot pass. */
+/**
+ * Upper bound (px) for the small floating-widget positional heuristic.
+ * Leaves headroom for plugin widgets; full-screen overlays cannot pass.
+ */
 const FLOATING_WIDGET_MAX_PX = 200
 
 /**
- * Floating-widget positional yield (2026-09-11, 悬浮窗拖动冲突 B 侧): plugins
- * ship draggable floating widgets (desktop-pet / floating-ball / draggable
- * panel shapes) that carry NO standard "draggable" DOM mark, yet the user
- * presses the widget itself — so the stroke's start target sits inside that
- * widget's layer. Draggable widgets almost always live in a SMALL
- * freely-positioned layer (position: fixed | absolute, own box ≤ 160px)
- * hovering above the page, so walk the ancestor chain from the event target:
- * the first small positioned ancestor counts as a floating widget and the
- * stroke yields (no arm, no touchmove preventDefault). Pairs with
- * dragMarkYields (cooperation mark) which needs no shape guessing.
- * Excluded: anything inside our own frame subtree — the FAB / backdrop /
- * drawer content carry their own gesture semantics and must never be
- * misread as floating widgets (the closed-state FAB sits in the start zone).
- * ponytail: no DOM-standard draggable signal exists; shape ≈ draggable is an
- * approximation with a known ceiling — a STATIC small positioned element
- * (e.g. a message badge) also yields, costing a stroke start under a
- * ≤160px dot; a REAL widget that misses (bigger layer, static positioning)
- * upgrades via the data-mobile-nav-dragging mark or by raising the cap.
+ * Yield when the press lands in a small fixed/absolute layer (plugin
+ * floating widgets with no standard draggable mark). First small positioned
+ * ancestor wins. Excludes our frame subtree (FAB / backdrop / drawer have
+ * their own semantics). Approximation: a static badge of this size also
+ * yields; oversized widgets need data-mobile-nav-dragging or a higher cap.
  */
 function findFloatingWidget(target: Element): Element | null {
   if (target.closest('[data-mobile-nav="frame"]') !== null) return null
@@ -717,79 +554,50 @@ function floatingWidgetYields(event: PointerEvent): boolean {
 }
 
 /**
- * Cache the follow geometry for a freshly locked stroke. Runs ONCE per
- * stroke (one getComputedStyle, plus one getBoundingClientRect only for the
- * cold-start fallback); the per-move path afterwards is write-only.
+ * Cache follow geometry once per locked stroke; per-move path is write-only.
  *
- * CLOSE strokes follow from a px baseline read here. OPEN strokes cannot:
- * the host renders TWO different subtrees in the same sidebar column —
- * collapsed it is a ~206px rail holding only Task Board / SSH / Files /
- * Session log (79 nodes, ZERO `role=treeitem`), open it is the ~280px drawer
- * with the session tree and footer (389 nodes, 15 treeitems). Dragging the
- * closed column would only reveal the rail (measured 2026-08-29, the user's
- * "完全不同的 UI、没有真实会话、位置全乱" report). The open direction therefore
- * commits FIRST and follows AFTER (armOpenFollow), which is also why its
- * baseline must stay a percentage rather than a px value cached here.
+ * Close strokes follow from a px baseline read here. Open cannot: the host
+ * renders two different subtrees in the same column (collapsed rail vs open
+ * drawer). Dragging the closed column would only reveal the rail, so open
+ * commits first then follows (armOpenFollow) with a percentage baseline.
  */
 function startFollow(): void {
   // Unbind first: followDrawer survives across strokes (endStroke releases
-  // the styles AFTER reset(), so reset must not clear it). Without this an
-  // open stroke would inherit the binding left by the previous close-follow
-  // and start following after all — exactly what the probe assertion
-  // swipe.open-stroke-no-follow catches.
+  // styles after reset). Without this an open stroke inherits the previous
+  // close-follow binding.
   followDrawer = null
   followEngaged = false
   openFollowArmed = false
   openFollowRefused = false
-  // strokeRtl is read by the OPEN branch of applyFollow BEFORE it arms, so it
-  // must be refreshed for every locked stroke — not only the close branch —
-  // or an open stroke would inherit the previous stroke's reading direction.
+  // strokeRtl is read by applyFollow's open branch before arm — refresh every
+  // locked stroke or open inherits the previous reading direction.
   strokeRtl = frameRtl()
   const drawer = findDrawer()
   if (drawer === null) return
-  // A closed stroke binds nothing here: the OPEN direction early-commits and
-  // binds inside armOpenFollow, using a percentage baseline (the element's
-  // width changes when React swaps the rail for the real drawer).
+  // Closed stroke binds nothing here: open early-commits and binds in
+  // armOpenFollow with a percentage baseline (width changes on subtree swap).
   if (!lockDrawerOpen) return
   followDrawer = drawer
-  // The slot is 110% of the element's OWN width (the host's closed rule is
-  // translateX(-110%), the extra 10% covering any shadow).
-  //
-  // Measuring the OPEN drawer is load-bearing (2026-08-29 seventh round,
-  // user report 「左滑的时候会卡一下…会突然有出现半开不开的样子」 →
-  // 「UI 会停在我最终滑动的地方，之后消失」). The previous baseline was a
-  // slot observed on the CLOSED host, i.e. on the ~206px nav rail
-  // (~-226.7px) — but the drawer being dragged is ~280px and parks at
-  // ~-308px. followTranslate clamps at the slot, so the drag froze 81px
-  // short of the edge: the drawer stopped under a still-moving finger
-  // (「半开不开」), and the release then had to travel that remainder,
-  // reading as a stall followed by a disappearance.
-  //
-  // Width is stable for the duration of a close stroke (no subtree swap
-  // until the release commits), so a px baseline is safe here — unlike the
-  // open direction, which must stay percentage-based because React swaps the
-  // rail for the real drawer mid-stroke.
+  // Slot is 110% of the open drawer's own width (host closed rule). Measuring
+  // the open drawer is load-bearing: a baseline from the collapsed rail is
+  // too short, so followTranslate clamps early and the drawer stalls short of
+  // the edge. Width is stable for a close stroke (no mid-stroke swap), so px
+  // is safe here — unlike open, which must stay percentage-based.
   const slot = (drawer.getBoundingClientRect().width * CLOSED_SLOT_PCT) / 100
   strokeClosedTx = strokeRtl ? slot : -slot
 }
 
 /**
- * Arm the OPEN follow: pin the drawer in its closed slot with an important
- * inline pair, THEN flip the host state in the same task. React mounts the
- * real ~280px drawer subtree while our inline transform holds it off-screen,
- * so the next move samples slide the genuine drawer — session tree and all —
- * out of the slot under the finger. Ordering matters: pin before the flip,
- * or the host's open rule (`transform: none`) paints the drawer at rest for
- * one frame and the user sees it snap into place before the follow starts.
- *
- * The backdrop and the FAB swap at the flip, which is the documented binary
- * behavior (spec review 缺陷 2: no opacity-following backdrop).
+ * Arm the open follow: pin the drawer in its closed slot with an important
+ * inline pair, then flip the host in the same task. React mounts the real
+ * drawer while the inline transform holds it off-screen. Pin before flip —
+ * otherwise `transform: none` paints at rest for one frame. Backdrop/FAB
+ * swap at the flip (binary; no opacity follow).
  */
-/** True while the drawer subtree layout+paint is deliberately deferred by
- * the arm-time content-visibility split (see armOpenFollow). */
+/** True while arm-time content-visibility defers drawer subtree layout+paint. */
 let cvDeferred = false
 
-/** Re-materialize the drawer contents after the mount-frame split. */
+/** Re-materialize drawer contents after the mount-frame split. */
 function revealDrawerContent(): void {
   if (!cvDeferred) return
   cvDeferred = false
@@ -810,16 +618,11 @@ function armOpenFollow(ctx: ClientContext): void {
   drawer.style.setProperty('transition', 'none', 'important')
   const pinned = followOpenTransform(0.0001, strokeRtl)
   drawer.style.setProperty('transform', pinned ?? `translateX(-${CLOSED_SLOT_PCT}%)`, 'important')
-  // Split the mount cost (2026-08-29, user report 「滑动不会立刻生效，而是卡
-  // 那么零点几秒」): the toggle below synchronously mounts the 389-node
-  // drawer subtree, and reconcile + style + layout + paint all land in ONE
-  // long task — measured 308ms at 4x CPU throttle, a quarter-second of
-  // frozen screen on a phone. content-visibility:hidden (set BEFORE the
-  // flip, on the column that survives the subtree swap) makes the mount
-  // frame skip subtree layout+paint — the panel BOX still paints and the
-  // compositor keeps following the finger — and the contents materialize
-  // two frames later via revealDrawerContent(), where the motion masks the
-  // second (smaller) block. Ignored by browsers without support (no-op).
+  // Split mount cost: toggle synchronously mounts a large drawer subtree in
+  // one long task. content-visibility:hidden before the flip skips subtree
+  // layout+paint on the mount frame (box still paints; compositor follows);
+  // contents materialize two frames later via revealDrawerContent. No-op
+  // where unsupported.
   drawer.style.setProperty('content-visibility', 'hidden', 'important')
   cvDeferred = true
   openFollowArmed = true
@@ -831,26 +634,19 @@ function armOpenFollow(ctx: ClientContext): void {
 
 /**
  * Paint this move sample's follow position. Null mapping (legacy direction
- * or pulled back past the stroke origin) releases the inline styles so the
- * host transition is live again — the drawer springs to wherever the host
- * state puts it and the classification still owns the release. Re-engaging
- * after a null sample rewrites both inline properties, which also
- * self-heals anything that restored them mid-stroke (React re-render).
+ * or pulled back past origin) pins rather than releasing — releasing would
+ * let the host transition fight the finger. Re-engaging rewrites both
+ * inline properties (also self-heals React restores mid-stroke).
  *
- * Both properties MUST be written with `important` priority. The open state
- * is styled by our own `transform: none !important` (layout.css.ts — the
- * containing-block rule for the settings overlay), which outranks a plain
- * inline declaration: a normal `style.transform = ...` leaves the computed
- * transform at `none` and the drawer never moves. That is exactly how the
- * first follow implementation shipped invisible while every inline-string
- * assertion passed (2026-08-29) — assert COMPUTED transform, never
- * `element.style.transform`.
+ * Both properties need `important`: open state is `transform: none
+ * !important` (layout.css.ts containing-block rule), which outranks a plain
+ * inline — without it the computed transform stays `none`. Assert computed
+ * transform, not `element.style.transform`.
  */
 function applyFollow(ctx: ClientContext, dx: number): void {
   if (!tracking || strokeMode !== 'drawer') return
   if (!lockDrawerOpen) {
-    // OPEN direction: arm past the twitch threshold, then follow with the
-    // percentage baseline (the element's width changes across the mount).
+    // Open: arm past threshold, then follow with percentage baseline.
     const travel = strokeRtl ? -dx : dx
     if (!openFollowArmed) {
       if (travel < OPEN_FOLLOW_ARM_PX) return
@@ -859,9 +655,7 @@ function applyFollow(ctx: ClientContext, dx: number): void {
     }
     const value = followOpenTransform(dx, strokeRtl)
     if (value === null) {
-      // Pulled back past the origin: hold the drawer parked in its slot
-      // rather than releasing (releasing would let the host animate it open
-      // behind the finger). The release still classifies and may revert.
+      // Pulled back past origin: keep parked in slot (release still classifies).
       followDrawer?.style.setProperty(
         'transform',
         `translateX(-${CLOSED_SLOT_PCT}%)`,
@@ -875,11 +669,8 @@ function applyFollow(ctx: ClientContext, dx: number): void {
   if (followDrawer === null) return
   const tx = followTranslate(strokeClosedTx, dx, strokeRtl, lockDrawerOpen)
   if (tx === null) {
-    // Pulled back past the origin. Hold the drawer at rest instead of
-    // releasing the inline pair: releasing would restore the host's .28s
-    // transition mid-stroke, so a direction wobble would animate the drawer
-    // and then jump when the finger crosses back — the same reason the open
-    // branch pins instead of releasing.
+    // Pulled back past origin: pin at rest (releasing would restore the host
+    // .28s transition mid-stroke and jump on direction wobble).
     followEngaged = true
     followDrawer.style.setProperty('transition', 'none', 'important')
     followDrawer.style.setProperty('transform', 'translateX(0px)', 'important')
@@ -901,31 +692,25 @@ export function clearFollowInlineStyles(el: HTMLElement): void {
 }
 
 /**
- * Drop the inline follow styles. The host stylesheet retakes control: with
- * the transition restored, clearing the transform animates the drawer from
- * the finger position to whatever the CURRENT host state says. Called on
- * every end-stroke branch (revert: this IS the spring-back; commit: the
- * same-task retarget below overrides the initial leg before any paint).
+ * Drop inline follow styles so the host stylesheet retakes control and
+ * animates from the finger position to the current host state. Called on
+ * every end-stroke branch (revert = spring-back; commit retargets same-task).
  */
 function releaseFollowStyles(): void {
-  // Clear whenever a drawer is bound, even if followEngaged was lost — dispose
-  // must never leave an !important transform stuck after the effect tears down.
+  // Clear whenever bound, even if followEngaged was lost — dispose must not
+  // leave an !important transform stuck.
   const el = followDrawer
   followEngaged = false
   if (el === null) return
   clearFollowInlineStyles(el)
 }
 
-/** A close commit that is still animating to the closed slot before the host
- * state flips. The flip MUST wait: the sidebar column renders two mutually
- * exclusive subtrees (280px drawer when open, 206px nav rail when closed),
- * and React swaps them some ~200ms after the marker flips — measured
- * mid-animation at t≈200ms of a 280ms transition (width 280→206, tx jumped
- * -207.6→-181.9 as -110% re-resolved against the narrower rail). Flipping
- * first therefore replaces the drawer's content and retargets its transition
- * IN FLIGHT — user report 「最后抽屉样式突然消失,不是自然的动画收起」.
- * Late commit: animate the inline transform to the slot, flip only when the
- * drawer is already off-screen, then drop the inline pair. */
+/**
+ * Close commit still animating to the closed slot before the host flips.
+ * Flip must wait: the column renders two exclusive subtrees, and React swaps
+ * them mid-transition if the marker flips early (width/tx jump). Late commit:
+ * animate inline to the slot, flip only when off-screen, then drop styles.
+ */
 let pendingCommit: { el: HTMLElement; ctx: ClientContext; timer: number } | null = null
 
 function finishPendingCommit(): void {
@@ -933,31 +718,28 @@ function finishPendingCommit(): void {
   if (pending === null) return
   pendingCommit = null
   window.clearTimeout(pending.timer)
-  // The element may already be unmounted (React swaps the subtree at the
-  // flip); stripping inline from a detached node is a harmless no-op.
+  // Element may already be unmounted at the flip; stripping a detached node is a no-op.
   clearFollowInlineStyles(pending.el)
-  // If the host already closed while our animation ran (e.g. a genuine
-  // backdrop tap inside the 280ms window), the flip already happened and a
-  // blind toggle would RE-OPEN the drawer — skip it.
+  // Host may already have closed (e.g. backdrop tap in the window) — skip or
+  // a blind toggle would re-open.
   const frame = getFrame()
   if (frame !== null && !frame.hasAttribute('data-sidebar-collapsed')) {
     pending.ctx.layout.toggleSidebar()
   }
 }
 
-/** Animate `el` to `targetTx` with our own transition, flip the host when it
- * lands. One-shot: a second call settles the previous commit first. */
+/**
+ * Animate `el` to `targetTx`, flip the host when it lands. One-shot: a
+ * second call settles the previous commit first.
+ */
 function commitWithAnimation(ctx: ClientContext, el: HTMLElement, targetTx: string): void {
   finishPendingCommit()
   el.style.setProperty('transition', `transform ${COMMIT_ANIM_MS}ms ease-in-out`, 'important')
-  // Flush the before-change style so the transition provably starts from the
-  // current (finger) position instead of risking a coalesced recalc that
-  // would jump straight to the target.
+  // Flush so the transition starts from the finger position, not a coalesced jump.
   void el.getBoundingClientRect()
   el.style.setProperty('transform', targetTx, 'important')
-  // Fade the dimming in step with the slide-out: the marker flips only when
-  // the drawer lands, so without this the screen would go drawer-then-dark
-  // (backdrop snapping away ~260ms AFTER the drawer already left).
+  // Fade dimming with the slide: marker flips only on land, so without this
+  // the backdrop snaps away after the drawer already left.
   fadeOverlayOut()
   cooldownUntil = performance.now() + COOLDOWN_MS
   pendingCommit = {
@@ -967,16 +749,16 @@ function commitWithAnimation(ctx: ClientContext, el: HTMLElement, targetTx: stri
   }
 }
 
-/** Terminal close commit: animate the drawer into the closed slot, then flip
- * the host. The slot must be the host's REAL closed rule (-110%), because
- * after the flip the closed host paints exactly this value — dropping the
- * inline pair must be a no-op, not a jump. */
+/**
+ * Terminal close: animate into the closed slot, then flip. Slot must be the
+ * host's real closed rule (-110%) so dropping the inline pair is a no-op.
+ */
 function commitFollowClose(ctx: ClientContext): void {
   const el = followDrawer
   followDrawer = null
   followEngaged = false
   if (el === null) {
-    // No follow binding (defensive): fall back to the immediate flip.
+    // No follow binding: fall back to immediate flip.
     releaseFollowStyles()
     ctx.layout.toggleSidebar()
     cooldownUntil = performance.now() + COOLDOWN_MS
@@ -988,18 +770,15 @@ function commitFollowClose(ctx: ClientContext): void {
   commitWithAnimation(ctx, el, target)
 }
 
-/** Animate an OPEN drawer into its closed slot and flip the host state once it
- * has landed. Every non-gesture closer (backdrop tap, Escape, navigation taps)
- * routes through this, so a click close animates exactly like a swipe close:
- * the host swaps the pane's subtree AND drops its surface (transparent,
- * borderless, content display:none) at the marker flip, so a plain CSS
- * transition would slide out an invisible shell - the same reason the gesture
- * close uses a late commit (eighth round, 2026-08-29). The OPEN direction needs
- * none of this: the host keeps the pane's visuals until the marker flips, so
- * its own transform transition plays (spec 2026-08-27, A 档).
- * Returns false when the caller must fall back to a plain toggleSidebar(): the
- * drawer is already closed (that call would OPEN it) or the user asked for
- * reduced motion, where the spec degrades the animation instead of adding one. */
+/**
+ * Animate an open drawer into its closed slot, then flip. Non-gesture closers
+ * (backdrop, Escape, nav taps) route here so click close matches swipe close:
+ * the host swaps the pane subtree and drops its surface at the marker flip,
+ * so a plain CSS transition would slide an invisible shell — hence late
+ * commit. Open direction needs none of this (host keeps visuals until flip).
+ * Returns false when the caller should plain-toggle (already closed, or
+ * prefers-reduced-motion).
+ */
 export function closeDrawerAnimated(ctx: ClientContext): boolean {
   if (!drawerOpen()) return false
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false
@@ -1012,15 +791,14 @@ export function closeDrawerAnimated(ctx: ClientContext): boolean {
   return true
 }
 
-/** Cancel paths: styles back to the host, pointer state to idle. An armed
- * open follow has already flipped the host state, so a cancel must also
- * toggle it back — release the inline pair first so the host transition
- * animates home from the finger position within the same task. */
+/**
+ * Cancel: styles back to host, pointer idle. Armed open follow already
+ * flipped the host — cancel must toggle back; release inline first so the
+ * host transition animates home same-task.
+ */
 function abortStroke(ctx: ClientContext | null, immediate = false): void {
   if (pendingCommit !== null) {
-    // A terminal commit is animating: this stroke already ended. Only a
-    // teardown (dispose) must settle it synchronously; otherwise let the
-    // timer land the flip.
+    // Terminal commit animating: only dispose settles synchronously.
     if (immediate) finishPendingCommit()
     return
   }
@@ -1029,9 +807,7 @@ function abortStroke(ctx: ClientContext | null, immediate = false): void {
   openFollowRefused = false
   revealDrawerContent()
   if (wasArmed && ctx !== null && followDrawer !== null && !immediate) {
-    // Armed open stroke aborted mid-follow: the host is already open, and
-    // flipping now would swap the subtree mid-motion — same artifact as the
-    // close release. Animate back into the slot, then flip.
+    // Armed mid-follow abort: host already open — animate into slot, then flip.
     reset()
     commitFollowClose(ctx)
     return
@@ -1079,30 +855,12 @@ function beginStroke(
   const open = drawerOpen()
   const filesZonePx = startZonePxFor(viewportWidthPx, FILES_ZONE_RATIO)
   if (open) {
-    // Close strokes may start ANYWHERE over the frame (2026-08-29 sixth
-    // round, user report 「希望打开抽屉之后以外的部分可以进行左滑」). The
-    // previous gate required the start point inside the drawer's own
-    // geometry and explicitly rejected the backdrop, so the ~28% of the
-    // screen beside the drawer swallowed every swipe — combined with the
-    // leftward verdict being refused, closing felt impossible. Nothing else
-    // owns a horizontal stroke while the drawer is open (the conversation is
-    // behind the backdrop), so the whole frame is fair game.
-    //
-    // 2026-09-13 narrowing (user decision): the RIGHT zone beside the drawer
-    // now belongs to the files gesture. Its leftward stroke must NOT close
-    // the drawer (the files panel would mount UNDER the drawer — z-1100 —
-    // and be invisible); its rightward stroke keeps the animated close via
-    // classifyFilesSwipe's 'close' verdict. The left zone / drawer content
-    // keeps every pre-existing drawer behavior. Drawer-mode follow painting
-    // only ever maps LEFTWARD (followTranslate's close branch), which is
-    // exactly the direction the narrowing removes from this zone — no close
-    // follow is lost by the routing (probe swipe.close-follow-reaches-slot
-    // was relocated into the drawer family accordingly).
-    //
-    // Tap-to-close on the backdrop is unaffected: a tap never reaches
-    // tryLock, so endStroke returns on !wasTracking without writing a
-    // consume mark, and the document-capture click handler passes backdrop /
-    // FAB clicks through unconditionally anyway.
+    // While the drawer is open, any horizontal stroke over the frame may
+    // close it (conversation sits behind the backdrop). The right-edge zone
+    // is reserved for the files gesture: leftward there must not close
+    // (files would open under the drawer); rightward still closes via
+    // classifyFilesSwipe. Tap-to-close on the backdrop is unaffected (taps
+    // never reach tryLock).
     const frame = getFrame()
     if (frame === null) return false
     const rect = frame.getBoundingClientRect()
@@ -1110,16 +868,8 @@ function beginStroke(
     if (event.clientY < rect.top || event.clientY > rect.bottom) return false
     // A session-row action menu (kebab) owns its own tap.
     if (event.target.closest('[class*="sessionRow"] button') !== null) return false
-    //
-    // 2026-09-17 (owner: the judgment zone must end at the drawer's right
-    // edge): inside the drawer BODY the drawer family always wins. The files
-    // zone is viewport-relative (0.45 from the right edge = x >= 214 at 390px)
-    // and overlaps the 280px drawer by 66px, so that sliver of the drawer's own
-    // surface used to answer 'none' to a leftward drag - touching the drawer and
-    // dragging left did nothing. Routing on the drawer's live rect (not a
-    // hardcoded width) keeps the rule true at every viewport: at >= 509px the
-    // 0.45 zone starts right of the drawer and nothing changes. Outside the
-    // body the files routing, including its leftward no-op, is untouched.
+    // Inside the drawer body, drawer gestures win over the viewport-relative
+    // files zone (which overlaps the drawer on narrow viewports).
     const drawer = findDrawer()
     const drawerRect = drawer === null ? null : drawer.getBoundingClientRect()
     const insideDrawer =
@@ -1201,14 +951,10 @@ function pushSample(event: PointerEvent): void {
 /**
  * Release the stroke: classify, then either commit or spring back.
  *
- * B 档 ordering is load-bearing: the verdict is computed FIRST (the follow
- * position IS dx, so classifySwipe decides complete-vs-revert exactly as in
- * A 档), then the inline follow styles are dropped — restoring the host
- * transition and clearing the transform starts an animation toward the
- * drawer's CURRENT host state — and only then does the commit flip the host
- * state, retargeting that transition within the SAME task. No paint happens
- * between the two, so the user sees one continuous motion from the finger
- * position into the final state; a reverted stroke simply animates home.
+ * Hybrid-follow order matters: classify first (follow position is dx), then
+ * drop inline follow styles (host transition resumes toward the current
+ * state), then flip host state in the same task so motion stays continuous.
+ * A revert simply animates home.
  *
  * An ARMED OPEN follow inverts the commit: the host state was already
  * flipped at arm time, so a positive verdict must NOT toggle again (that
@@ -1297,15 +1043,10 @@ function endStroke(
   // the contents (no-op unless armed this stroke) before any release or
   // commit animation.
   revealDrawerContent()
-  // Terminal styles, per verdict. CLOSE commits are LATE: animate the inline
-  // transform into the closed slot and flip the host only when the drawer is
-  // already off-screen (commitFollowClose → commitWithAnimation) — flipping
-  // first swaps the sidebar subtree mid-animation (measured: width 280→206
-  // at t≈200ms of the 280ms transition, tx jumped backward). OPEN verdicts
-  // and the revert/modal/cooldown paths keep the plain release: the host
-  // stays in its current state, so its own transition finishes the motion
-  // and no subtree swap can be in flight. Every path either releases or
-  // hands the inline pair to the pending commit — it can never leak.
+  // CLOSE commits are late: animate into the closed slot, then flip the
+  // host once off-screen (early flip swaps the sidebar mid-animation).
+  // OPEN / revert / modal / cooldown release without flipping; every path
+  // either clears the inline styles or passes them to the pending commit.
   if (armedOpen) {
     // The host is already open (early commit). Keep it on 'open', otherwise
     // animate back into the slot and flip closed.
@@ -1435,19 +1176,17 @@ export function installSidebarSwipe(ctx: ClientContext, filesToggle: () => boole
 
     const onPointerMove = (event: PointerEvent): void => {
       if (event.pointerId !== trackingPointer) return
-      // A modal may rise mid-stroke (e.g. an a11y trap opening) — spec review
-      // 缺陷 1's guard, now per-MOVE because B 档 paints a transform the
-      // modal must not inherit: abandon and spring the drawer back.
+      // Mid-stroke modal (e.g. a11y trap): abort per move so the follow
+      // transform is not inherited by the modal; spring the drawer back.
       if (modalOpen() || takeoverActive()) {
         abortStroke(ctx)
         return
       }
       if (!tracking) {
-        // A long-press selection can appear AFTER pointerdown but BEFORE the
-        // axis lock (#43 second timing window): abandon the stroke and hand
-        // the touch back so the handles become draggable (reset() also lifts
-        // the touchmove preventDefault). Once locked the gesture stays
-        // committed — a selection never appears mid-swipe.
+        // Long-press selection can appear after pointerdown but before axis
+        // lock (#43): abandon so selection handles stay draggable (reset()
+        // also clears touchmove preventDefault). After lock the gesture
+        // stays committed — selection does not appear mid-swipe.
         if (selectionOwnsStroke()) {
           reset()
           return

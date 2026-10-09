@@ -1,24 +1,17 @@
-// session-row-fiber.ts — DOM-free core behind the drawer session-row tap
-// fallback (#49 / PR #49): on some WebKit/iOS builds a tap on a session row
-// never produces a `click`, so the row's own React onClick never runs and
-// navigation silently does nothing. The runtime half resolves the tapped
-// element's fiber with `reactFiberOf`, walks it with `findSessionIdInFiber`,
-// and hands the id to the host. This file is the PURE half, so the walk is
-// unit-testable with no DOM, no renderer and no DSH runtime.
-//
-// Deliberately has ZERO import statements, like reconciler-core.ts: node:test
-// loads it directly through Node's native type stripping, and the client bundle
-// has nothing to resolve. Nothing here touches `document` or `window`.
-//
-// Two measured facts from the live 0.1.5-rc.2 host shaped the walk:
-//  - the row ITEM fiber is 3 hops above the tapped element and carries the
-//    session id at `props.node.id`;
-//  - hop 32 is a `ScopeProvider` ancestor whose `props.scope` is the literal
-//    string 'session-maybe'. Anything trusting the SHAPE of an id
-//    (/^session[-_]/) would hand that string to `ctx.sessions.open(id)`, and
-//    that contract fails loud on unknown ids. So a value counts only when the
-//    caller's `isKnownId` accepts it — there is no shape-based fallback, and a
-//    "plausible looking id" must never be guessed.
+/**
+ * Pure half of the drawer session-row tap fallback: on some WebKit/iOS builds
+ * a tap never produces a `click`, so the row's React onClick never runs.
+ * Runtime resolves the tapped element's fiber via `reactFiberOf`, walks it
+ * with `findSessionIdInFiber`, and hands a known id to the host.
+ *
+ * Zero imports (like reconciler-core.ts): node:test loads it via native type
+ * stripping; the client bundle has nothing to resolve. No `document` / `window`.
+ *
+ * Contract: a value counts only when the caller's `isKnownId` accepts it —
+ * no shape-based fallback. Hop 32 can be a ScopeProvider with
+ * `props.scope === 'session-maybe'`; trusting `/^session/` would hand that
+ * string to `ctx.sessions.open` and fail loud on unknown ids.
+ */
 
 /** The only part of a React fiber this walk reads. */
 export interface FiberNodeLike {
@@ -27,15 +20,15 @@ export interface FiberNodeLike {
 }
 
 /**
- * Hop budget for one walk. The measured row item fiber is 3 hops up and the
- * whole chain is well under this; the bound exists so an unexpectedly deep or
- * malformed chain cannot spin.
+ * Hop budget for one walk. The row item fiber is a few hops up and the whole
+ * chain is well under this; the bound exists so a deep or malformed chain
+ * cannot spin.
  */
 export const FIBER_WALK_LIMIT = 60
 
-/** Props keys holding an OBJECT with an `.id` (row items, session records). */
+/** Props keys holding an object with an `.id` (row items, session records). */
 const OBJECT_KEYS = ['node', 'session', 'summary', 'result'] as const
-/** Props keys holding the id STRING directly. */
+/** Props keys holding the id string directly. */
 const ID_KEYS = ['sessionId', 'id'] as const
 /** React stamps a fiber on a node under a per-renderer random suffix. */
 const FIBER_KEY_PREFIXES = ['__reactFiber$', '__reactInternalInstance$'] as const
@@ -66,7 +59,7 @@ function acceptedIdInProps(
 
 /**
  * Walk from `fiber` towards the root (`.return`) and return the session id of
- * the NEAREST hop offering one the caller knows. A hop whose candidate is
+ * the nearest hop offering one the caller knows. A hop whose candidate is
  * rejected does not stop the walk, so an outer row item fiber still wins over
  * an inner fiber carrying an unrelated or stale id. Returns null when nothing
  * within `limit` hops (the starting fiber counts as the first) is accepted.
@@ -107,8 +100,8 @@ export function reactFiberOf(instance: object | null | undefined): FiberNodeLike
 
 /**
  * Whether a pointer release still counts as a tap: it stayed within `slopPx` on
- * BOTH axes (max-norm, not Euclidean). The drawer list scrolls vertically, so a
- * 60px vertical drift must not navigate.
+ * both axes (max-norm, not Euclidean). The drawer list scrolls vertically, so a
+ * large vertical drift must not navigate.
  */
 export function isTapWithinSlop(
   from: { x: number; y: number },

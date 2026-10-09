@@ -9,12 +9,9 @@
 //    and the pitfalls archive (docs/maintenance/pitfalls.md) must stay
 //    parseable and non-empty, because the condensed AGENTS.md entries point
 //    into them.
-// 4. Counted claims must match the tree (counted-claim class). The 2026-09-18
-//    audit found the specs count (7 vs 8), the probe/anchor counts and the test
-//    count all stale at once, each one silently: nothing compared the prose
-//    numbers with the directories they describe. A number that can be derived
-//    gets derived here; numbers that cannot (third-party installed versions)
-//    belong to the audit procedure in docs/upstream/upgrade-runbook.md.
+// 4. Counted claims must match the tree (counted-claim class). Numbers that
+//    can be derived from the directories are checked here; numbers that cannot
+//    (third-party installed versions) belong in docs/upstream/upgrade-runbook.md.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readdir, readFile, stat } from 'node:fs/promises'
@@ -64,13 +61,8 @@ test('compat-contracts.json entries are well-formed', async () => {
   }
 })
 
-// The index in AGENTS.md is a list of bare names, and each name IS the anchor of
-// its archived entry (`### <name>` in docs/maintenance/pitfalls.md), so pointers
-// resolve by equality. Before 2026-09-18 this test scored CJK-window overlap
-// between thematic § labels and archive text, with a measured ceiling: the real
-// label 断点与设备 (0.571) and an invented 不存在的主题xyz (0.556) were not
-// separable by any threshold. The name-slug scheme replaced that estimate with
-// an exact check, so the scoring helpers are gone.
+// AGENTS.md Pitfalls index entries are bare names that must match `### <name>`
+// anchors in docs/maintenance/pitfalls.md exactly.
 test('pitfalls archive mirrors the AGENTS.md name index', async () => {
   const agents = await readRepoFile('AGENTS.md')
   const archive = await readRepoFile('docs/maintenance/pitfalls.md')

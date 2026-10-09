@@ -51,12 +51,9 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-web-mobile: dictionaries')
 
   ctx.effect(() => {
-    // 先清掉可能残留的同 id 样式表。
-    // 2026-09-23：app 的 P8 自愈会把 client.js 换回上游版、页面里也随之挂着
-    // **上游那份 CSS**；我们重新部署产物后，只 append 不清旧的话，页面里那份旧表
-    // 仍然压在上面（实测：开关/权限图标/头部留白改完"看着没生效"）。
-    // 本插件是原地热重载（不整页刷新），所以这一步必须自己保证"页面里的样式表
-    // 就是当前产物里的这一份"。
+    // Drop any prior copy of this sheet first. Hot reload does not refresh the
+    // page, and app self-heal can leave an upstream sheet that would keep
+    // winning if we only append.
     for (const stale of document.querySelectorAll('style[data-plugin-css="dsh-web-mobile/mobile.css"]')) {
       stale.remove()
     }
@@ -209,12 +206,9 @@ export function apply(ctx: ClientContext): void {
   // rename / fork / archive) with a confirm dialog. Mobile-only.
   installSessionMenuDelete(ctx)
 
-  // Sidebar swipe gestures: edge swipe-in opens the drawer, content swipe-out
-  // closes it (release-classified, zero inline transforms — A 档). Since
-  // 2026-09-13 the layer also owns the right-edge files gesture (leftward
-  // opens the files panel via openFilesPanel, rightward closes whatever is
-  // on top — the panel or the drawer); a leftward stroke never collapses
-  // anything.
+  // Sidebar swipe: edge in opens the drawer, content out closes it. Also owns
+  // the right-edge files gesture (leftward opens via openFilesPanel; rightward
+  // closes the topmost panel or drawer).
   installSidebarSwipe(ctx, openFilesPanel)
 
   // Lineage-count chip: reliable open/close on touch pointers (upstream is
@@ -236,13 +230,11 @@ export function apply(ctx: ClientContext): void {
   // when open, never toggles), so a second tap could not close it. Dispatch the
   // outside pointerdown its own dismiss hook waits for, then swallow the click.
   installTeamChipToggle(ctx)
-  // Model/reasoning menu portals to <body>; the CSS centering rule died with the
-  // portal move, so re-anchor it on the trigger here (owner report: opens far left).
+  // Model/reasoning menu portals to <body>; re-anchor on the trigger so it
+  // does not open far left after the CSS centering rule stopped matching.
   installModelMenuAnchor(ctx)
-  // Shortcut modal (settings → 通用设置 → 快捷键): the host focuses its search
-  // field on open, which raises the soft keyboard over a page the user came to
-  // EDIT, and the keyboard shrinking the viewport resizes the sheet (owner
-  // report: 「打开的时候还是会闪，而且还会唤起键盘」).
+  // Shortcut modal: host autofocuses its search field on open, which raises
+  // the soft keyboard and resizes the sheet — suppress that autofocus.
   installShortcutModalKeyboardGuard(ctx)
   // Entering a session (issue #140): the host's InputBar focuses the editor
   // from a [locked, sessionId, editor] passive effect on every switch, which
@@ -269,16 +261,11 @@ export function apply(ctx: ClientContext): void {
 
 
   // Session log download, relocated from the session header to the drawer
-  // footer on mobile (the header capsule is hidden by CSS). The footer's
-  // Files action was removed on 2026-09-17 — see
-  // docs/specs/2026-09-17-sidebar-files-coexistence-design.md.
+  // footer on mobile (header capsule hidden by CSS). Files entry removed —
+  // see docs/specs/2026-09-17-sidebar-files-coexistence-design.md.
   //
-  // Footer stacking relies on the list-slot sort by (priority, order):
-  // dsh-remote-web-ui leaves it unset (default 0, its two icon buttons stay
-  // on top) and dsh-usage-stats uses 10. Order 5 keeps the session-log pill
-  // directly under the icon row with the usage/balance badge below it —
-  // instead of a tie at 10 where registration order could wedge the badge
-  // between the icons and the pill.
+  // Order 5 sits under remote-web-ui icons (default 0) and above
+  // usage-stats (10) so the pill is not wedged between them.
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
     id: 'mobile-nav-session-log',
@@ -293,13 +280,9 @@ export function apply(ctx: ClientContext): void {
     }),
   }, MobileDrawerFooter))
 
-  // Composer file entry (0.1.6 host): the host deleted the paperclip attach
-  // button, leaving the 「文件」row inside the "+" listbox as the only file
-  // entry. Re-add a permanent one in the host's own conversation.input.left
-  // seat (inside the tools lane, beside the plus button). It triggers the
-  // host's hidden input[type=file] — the same fileInputRef.current.click()
-  // the host's own command runs — so intake validation, upload and the
-  // availability policy stay host-owned.
+  // Composer file entry: host removed the paperclip; re-add a permanent
+  // control in conversation.input.left that clicks the host's hidden
+  // input[type=file] so validation/upload stay host-owned.
   ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
     name: 'conversation.input.left',
     id: 'mobile-nav-file-upload',

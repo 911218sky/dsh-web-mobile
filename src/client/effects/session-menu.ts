@@ -1,29 +1,19 @@
 /**
  * Session-row action-menu injection: on touch-primary devices, adds a
- * "delete session" item to the host's per-row ⋯ menu (beside the host's own
- * items — rename / fork / archive, plus the 0.1.7 pin item; blank rows stay
- * host-native) and drives the whole delete flow: row → session id
- * resolution, a confirm dialog, the host delete endpoint, and the list
- * refresh.
+ * "delete session" item to the host's per-row ⋯ menu and drives the delete
+ * flow (row → session id, confirm dialog, delete endpoint, list refresh).
  *
- * The host menu is React-owned (ui-workspace) with no extension slot, so the
- * item is injected into the portaled `[role="menu"]` list by cloning the
- * host's own item markup (reusing the hashed classes keeps the styling
- * identical), and re-injected whenever React recreates the menu. Two menu
- * shapes are supported: rc.2 nests icon/label spans in the item, while 0.1.5
- * renders the label directly in the item button (shared `_item_1nxmc_92`
- * menu component, no child elements) — label reads and the injected text
- * fall back across both.
+ * The host menu has no extension slot, so the item is injected into the
+ * portaled `[role="menu"]` by cloning host item markup (hashed classes keep
+ * styling identical) and re-injected whenever React recreates the menu.
+ * Supports nested icon/label spans and flat label-in-button shapes.
  *
- * Row → session id: session rows carry no id in the DOM, so the session is
- * resolved from the client list by display title (the row's rendered title IS
- * the summary's `displayTitle`); duplicate titles are disambiguated by the
- * row's position within its workspace group section.
+ * Row → session id: titles match `displayTitle`; duplicates are disambiguated
+ * by position within the workspace group section. Blank rows stay host-native
+ * (localized "New session" title cannot resolve).
  *
- * Ported from community-fork wzxmt-zhc v2.7.0; the only mainline delta is
- * where the delete-dialog CSS lives: base.css.ts, with corrected animation
- * names (`dsh-web-mobile-*`; the fork's originals referenced the pre-rename
- * `dsh-mobile-nav-*` names, which silently no-op).
+ * Touch-gated via TOUCH_QUERY. Disposer removes listeners, observer, injected
+ * nodes, and the confirm dialog.
  */
 import type { ClientContext } from '../client-context.ts'
 import { MOBILE_QUERY, TOUCH_QUERY, installMobileEffect, toggleDrawer } from './phone-chrome.ts'
@@ -72,20 +62,16 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * Install the mobile session-delete menu machinery. Touch-gated: the whole
- * effect arms under TOUCH_QUERY — (pointer: coarse) at EVERY width — so a
- * large tablet in landscape keeps the desktop layout but still gets the
- * delete item, while any mouse-driven or pointer-less window stays a
- * complete no-op. Returns a disposer (via installMobileEffect) that removes
- * every listener, observer, injected node, and the confirm dialog.
- * @param ctx - client root context.
+ * Install the mobile session-delete menu. Touch-gated under TOUCH_QUERY so
+ * large tablets keep the desktop layout but still get the delete item;
+ * mouse-driven or pointer-less windows are a no-op. Disposer removes every
+ * listener, observer, injected node, and the confirm dialog.
  */
 export function installSessionMenuDelete(ctx: ClientContext): void {
   installMobileEffect(ctx, 'dsh-web-mobile: session-menu delete', () => {
     const navT = ctx.locale.bind(NS)
     // Host workspace-browser dictionary for menu-signature detection. Bound
-    // lazily so a later-registered dictionary is picked up; the general
-    // overload accepts the raw namespace id.
+    // lazily so a later-registered dictionary is picked up.
     const wsT = (key: string, params?: Record<string, unknown>): string =>
       // Host dictionaries vary by generation; keep signature detection resilient.
       (ctx.locale.bind(WORKSPACE_NS) as (k: string, p?: Record<string, unknown>) => string)(key, params)
@@ -106,8 +92,8 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
       })
       if (candidates.length === 1) return candidates[0]
       if (candidates.length === 0) return undefined
-      // Duplicate titles: the row's position among its group's same-title
-      // rows maps 1:1 onto the same-title ids of that group's account.
+      // Duplicate titles: row position among same-title rows maps onto
+      // same-title ids of that group's account.
       const group = row.closest<HTMLElement>('[class*="_groupSection"]')
       if (group === null) return undefined
       const headerTitle = group
@@ -133,11 +119,10 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
     }
 
     /**
-     * Read one menu item's visible label across host generations: rc.2 nests
-     * the text in an `_itemLabel` span (beside an `_itemIcon`), while 0.1.5
-     * puts it directly in the button (`_item_1nxmc_92`, no child elements).
+     * Read one menu item's visible label across host generations: nested
+     * `_itemLabel` span beside an icon, or text directly in the button.
      * Falling back to the item's own textContent covers both — svg icons
-     * contribute no text, so rc.2 items read identically either way.
+     * contribute no text.
      */
     const itemLabel = (item: HTMLElement): string => {
       const label = item.querySelector<HTMLElement>('[class*="_itemLabel"]')
@@ -146,16 +131,10 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
 
     /**
      * Whether a menu list is the host's per-session row menu. Containment
-     * style, never an exact item count: 0.1.7 added a fourth 「置顶会话」
-     * item (menu.pinSession, alongside rename / fork / archive) — a
-     * `length === 3` gate silently disabled the whole feature on 0.1.7.
-     * rename + fork + archiveSession is the discriminating triple (a
-     * full-host label audit: the fork label exists only in ui-workspace's
-     * session menu). Archived rows swap archive for 取消归档, so they do NOT
-     * match this signature and get no delete item — the host's own look
-     * (delete via unarchive first); resolution excludes archived ids anyway,
-     * so an injected item there would be a doomed deleteErrorResolve tap
-     * (#V1 N1: the removed unarchive branch used to inject exactly that).
+     * style, never an exact item count (hosts may add pin / other items).
+     * rename + fork + archiveSession is the discriminating triple. Archived
+     * rows swap archive for unarchive and get no delete item — resolution
+     * excludes archived ids anyway.
      */
     const isSessionMenu = (menu: HTMLElement): boolean => {
       const labels = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')]
@@ -178,18 +157,13 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
       }
     }
 
-    /** Show the delete confirmation as a centered frosted-glass modal over
-     *  the frame. Mounted on <body>, NOT in the frame: the third-party mobile
-     *  shim (@linxin666/dsh-web-all) listens in the CAPTURE phase on the frame
-     *  and, while the drawer is open, answers every click inside the frame but
-     *  outside [data-pane="sidebar"] with preventDefault + stopPropagation.
-     *  A card inside the frame therefore had dead buttons — measured
-     *  2026-09-14: a real touch tap on 「取消」 left the card open, and only
-     *  Escape closed it. Body-level, the shim's listener never sees these
-     *  clicks (its sibling menus are portaled there for the same reason), and
-     *  the dialog's band lives in base.css (backdrop z 1400 above the drawer
-     *  on the mobile branch). The card is appended INTO the backdrop so the
-     *  backdrop's flex centers it (base.css 2026-09-24 rework). */
+    /**
+     * Delete confirmation as a centered frosted-glass modal. Mounted on
+     * `<body>`, not the frame: the third-party mobile shim captures clicks
+     * inside the frame outside `[data-pane="sidebar"]` and would kill card
+     * buttons. Body-level matches host portaled menus; backdrop flex centers
+     * the card (base.css).
+     */
     const showDeleteDialog = (sessionId: string, title: string): void => {
       closeDialog()
       const host = document.body
@@ -211,11 +185,8 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
       const yesButton = card.querySelector<HTMLButtonElement>('[data-mobile-nav="delete-confirm-yes"]')
       const errorLine = card.querySelector<HTMLElement>('[data-mobile-nav="delete-error"]')
       noButton?.addEventListener('click', closeDialog)
-      // The card is a CHILD of the backdrop (the CSS centers it through the
-      // backdrop's flex), so close only on genuine backdrop taps — without
-      // the target guard every card click (the async yes tap included) would
-      // bubble here and close the dialog before the fetch settles, killing
-      // the pending state and the error display path.
+      // Card is a child of the backdrop; close only on genuine backdrop taps
+      // so card clicks (including async yes) do not close before fetch settles.
       backdrop.addEventListener('click', (event) => {
         if (event.target !== backdrop) return
         closeDialog()
@@ -272,20 +243,13 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
         if (wasCurrent && sessionsCanClear(ctx.sessions)) {
           ;(ctx.sessions as unknown as { clear: () => void }).clear()
         }
-        // Repull the baseline so the deleted row disappears. Must be called AS
-        // A METHOD on ctx.sessions: refresh() reads `this.manager`, and an
-        // extracted reference would throw "this is undefined" — the failure
-        // mode that left deleted cold sessions lingering as ghost rows.
+        // Must call refresh as a method on ctx.sessions (reads `this.manager`).
         const sessions = ctx.sessions as { refresh?: () => Promise<void> }
         await sessions.refresh?.()
-        // On the mobile branch the drawer hosts the list, so closing it is
-        // the right follow-up after deleting the current session; on the
-        // desktop layout (wide touch) the same call would collapse the
-        // always-visible sidebar panel, so gate it on the mobile query.
-        // toggleDrawer keeps that semantics (it falls back to the plain toggle
-        // when the drawer is not open) while making the close a late commit,
-        // so the marker cannot flip while the column is still painted — the
-        // window in which the drawer band covers an open modal (2026-09-25).
+        // Close the drawer after deleting the current session on the mobile
+        // branch only; wide touch keeps the always-visible sidebar. Late
+        // commit via toggleDrawer so the marker cannot flip while the column
+        // is still painted (popover band raises on backdrop presence).
         if (wasCurrent && window.matchMedia(MOBILE_QUERY).matches) toggleDrawer(ctx)
       })
 
@@ -311,8 +275,7 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
           <button type="button" data-mobile-nav="delete-confirm-no">${escapeHtml(navT('deleteConfirmNo'))}</button>
         </div>`
       card.querySelector<HTMLButtonElement>('[data-mobile-nav="delete-confirm-no"]')?.addEventListener('click', closeDialog)
-      // Same child-of-backdrop target guard as showDeleteDialog: error-card
-      // taps must not bubble into the backdrop's close.
+      // Same child-of-backdrop target guard as showDeleteDialog.
       backdrop.addEventListener('click', (event) => {
         if (event.target !== backdrop) return
         closeDialog()
@@ -347,11 +310,8 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
         label.textContent = navT('deleteSession')
         label.style.color = DANGER_COLOR
       } else if (button.firstElementChild === null) {
-        // 0.1.5 shape: the menuitem button carries its text directly (no
-        // `_itemLabel` span, no icon element). Replace the whole text and let
-        // the danger color ride the button itself. A button WITH element
-        // children but no label span is an unknown future shape — leave its
-        // text alone rather than guess.
+        // Flat menuitem: text on the button itself. Unknown future shapes
+        // with element children but no label span are left alone.
         button.textContent = navT('deleteSession')
         button.style.color = DANGER_COLOR
       }
@@ -374,8 +334,7 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
           }
           showDeleteDialog(sessionId, captured.title)
         } catch (reason) {
-          // Never fail silently: surface internal resolution errors instead of
-          // leaving the tap with no visible result.
+          // Surface resolution errors instead of a silent no-op tap.
           console.error('[dsh-web-mobile] session delete failed:', reason)
           showError(navT('deleteErrorGeneric', {
             message: reason instanceof Error ? reason.message : String(reason),
@@ -387,14 +346,9 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
 
     /**
      * Inject into every open session menu. Blank (new-session) rows are
-     * excluded: the host renders their title as the localized "New session"
-     * label (`t("session.new")`) while the summary's `displayTitle` stays
-     * empty, so the delete flow could never resolve them — the tap would
-     * only end in a deleteErrorResolve card. A menu without the delete item
-     * is the host's own look for those rows. Known ceiling: a normal session
-     * manually titled exactly the host's "New session" label is mistaken for
-     * a blank row and gets no delete item either (accepted trade-off; its
-     * resolution itself would still work).
+     * excluded: host title is localized "New session" while `displayTitle`
+     * stays empty, so delete could never resolve. Known ceiling: a normal
+     * session titled exactly that label is also skipped.
      */
     const injectAll = (): void => {
       const blankLabel = wsT('session.new')
@@ -412,10 +366,8 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
       })
     }
 
-    // Capture the ⋯ button click before React handles it, so the row/title
-    // are known when the portaled menu appears. The host renders the anchor
-    // button WITHOUT `aria-haspopup` (Menu renders `{anchor}` verbatim), so
-    // the row's single button IS the ⋯ anchor — no attribute to match on.
+    // Capture the ⋯ click before React handles it so row/title are known when
+    // the portaled menu appears. Host anchor has no aria-haspopup.
     const onDocumentClick = (event: MouseEvent): void => {
       const target = event.target as HTMLElement | null
       if (target === null) return
@@ -429,8 +381,7 @@ export function installSessionMenuDelete(ctx: ClientContext): void {
     }
     document.addEventListener('click', onDocumentClick, true)
 
-    // Re-inject whenever a menu list mounts/updates (React recreates the list
-    // on every open, so the injected node must follow).
+    // Re-inject whenever a menu list mounts/updates (React recreates on open).
     const observer = new MutationObserver((records) => {
       for (const record of records) {
         if (record.type !== 'childList') continue

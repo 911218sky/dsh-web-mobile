@@ -32,14 +32,9 @@ export function openFilesPanel(
   doc: FilesPanelDocument = document,
   _frame: FilesPanelFrame | null = getFrame(),
 ): boolean {
-  // Toggle semantics, because the host swaps controls with the panel state
-  // (measured on 0.1.5): while the panel is CLOSED the only opener is
-  // `data-sidebar-right-expand`; once it is OPEN that element is unmounted and
-  // only `data-sidebar-right-toggle` (Collapse right sidebar) remains. Acting
-  // on the expand button alone was a no-op whenever the panel happened to be
-  // already open — the exact "tap does nothing / position looks wrong" report.
-  // Closing first also keeps the control reachable: the full-screen panel
-  // covers the header, so a second tap could never reach our button.
+  // Host swaps controls with panel state: closed → expand only; open →
+  // collapse only. Prefer expand, else collapse, so a second tap still works
+  // when the full-screen panel covers the header.
   const closer = doc.querySelector(HOST_FILES_CLOSER) as { click?: () => void } | null
   const opener = doc.querySelector(HOST_FILES_OPENER) as { click?: () => void } | null
   const hostControl = typeof opener?.click === 'function' ? opener : closer

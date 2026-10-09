@@ -1,11 +1,6 @@
-// Drawer-back fix: sheets portaled into the AppFrame overlayLayer
-// (position:absolute + z-index:20 — its own stacking context) can never
-// out-rank the drawer column's 1300 in the root context, no matter what
-// z-index the sheet itself carries. Measured 2026-09-22 (Playwright, 390px,
-// drawer open): a layer child lost elementFromPoint to drawer elements at
-// z auto AND z 9999 alike; only raising the layer ROOT to 1400 revealed it.
-// This pins the class fix: the overlayLayer raise must stay drawer-open-
-// gated, inside the mobile popover band, at the 1400 band value.
+// Sheets in AppFrame overlayLayer (absolute, z20 stacking context) cannot
+// outrank the drawer column (z1300) unless the layer root itself rises to
+// 1400. Pins: drawer-open-gated raise in the mobile popover band at 1400.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -42,12 +37,9 @@ test('overlayLayer raise is drawer-open-gated at the 1400 band', () => {
   assert.match(band, /\[class\*="_overlayLayer"\]\s*\{\s*z-index: 1400 !important;\s*\}/)
 })
 
-// 0.1.7 fullscreen sidebar panels (terminal / files / preview / browser) put the
-// dockkit cell at z 40 (--dsh-dockkit-dock-layer: 40), above the host's overlay
-// layer (20) and our FAB (21). Measured 2026-09-23 at 390px with the terminal
-// open: the FAB's centre hit-test returned a panel child and a real tap left the
-// drawer closed. The band must raise our own two surfaces for that state — and
-// only for it: the presentation attribute alone survives a closed panel.
+// 0.1.7 fullscreen right-sidebar panels put dockkit at z40, above overlay (20)
+// and FAB (21). The band must raise FAB and overlayLayer only while the panel
+// is open — the presentation attribute alone survives a closed panel.
 const FIX = '[data-sidebar-right-open][data-sidebar-right-panel="fullscreen"]'
 
 test('fullscreen right-sidebar panel raises our FAB above the dock layer band', () => {
@@ -70,8 +62,7 @@ test('fullscreen right-sidebar panel also raises the overlayLayer root', () => {
 })
 
 test('the right-sidebar raise is gated on the OPEN attribute, not the presentation', () => {
-  // `data-sidebar-right-panel="fullscreen"` stays on the panel while it is
-  // closed (measured 2026-09-23), so the gate must include the open marker.
+  // Presentation attribute stays while closed; gate must include the open marker.
   assert.doesNotMatch(
     band,
     /body:has\(\[data-sidebar-right-panel="fullscreen"\]\)/,

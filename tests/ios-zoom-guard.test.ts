@@ -27,7 +27,7 @@ test('detectIosWebKit: the feature probe alone identifies iOS WebKit', () => {
 })
 
 test('detectIosWebKit: UA fallback covers iPhone and Mac-UA iPadOS', () => {
-  // Chromium answers false to the probe (measured), so the UA decides.
+  // Chromium answers false to the probe, so the UA decides.
   const no = (): boolean => false
   assert.equal(detectIosWebKit({ userAgent: IPHONE, maxTouchPoints: 0 }, no), true)
   assert.equal(detectIosWebKit({ userAgent: IPADOS, maxTouchPoints: 5 }, no), true)
@@ -97,10 +97,8 @@ test('root and drawer keep pinch-zoom while still refusing horizontal pan', () =
   assert.match(root, /overscroll-behavior-x: none !important;/)
   // The gesture layer's own rule (the drawer subtree): touch-action intersects
   // down the ancestor chain, so a bare pan-y here would cancel the root grant.
-  // Read whole and take the last declaration, the way a single rule resolves a
-  // repeated property: the declaration stopped being the rule's first line when
-  // the split rules were merged (2026-09-16), and asserting on that position
-  // would make this guard fail on a pure reordering.
+  // Take the last declaration in the rule (CSS cascade within one block), not
+  // the first line — reordering must not break this guard.
   const drawerBody = /\[data-mobile-nav="frame"\] > :first-child \{([\s\S]*?)\n  \}/.exec(LAYOUT_CSS)?.[1]
   assert.ok(drawerBody, 'the drawer column rule must exist')
   const drawer = [...drawerBody.matchAll(/touch-action: ([^;]+);/g)].at(-1)?.[1]

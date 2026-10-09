@@ -32,12 +32,10 @@ test('the four style modules keep zero structural fatals', () => {
 // untouched and every gate green, so the desktop half would stop covering the
 // 768-1023px band in silence. That link is what this asserts.
 //
-// The (pointer: fine) arm specifically cannot be covered by a CDP scene:
-// headless Chromium reports (pointer: none) with touch emulation off, and
-// neither Emulation.setEmulatedMedia nor --blink-settings=primaryPointerType
-// makes it report fine (both tried, 2026-09-16). The arm is the one the
-// 2026-08-30 PC leak came through, so it is pinned here against the query it
-// has to complement.
+// The (pointer: fine) arm cannot be covered by CDP: headless Chromium reports
+// (pointer: none), and neither Emulation.setEmulatedMedia nor
+// --blink-settings=primaryPointerType reports fine. Pin it against the query
+// it must complement.
 test('the desktop hide block stays the complement of MOBILE_QUERY', () => {
   const CHROME = readFileSync(new URL('../src/client/effects/phone-chrome.ts', import.meta.url), 'utf8')
   const query = /MOBILE_QUERY\s*=\s*'([^']+)'/.exec(CHROME)?.[1]

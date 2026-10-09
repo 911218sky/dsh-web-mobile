@@ -1,19 +1,7 @@
-// 快捷键弹层「抽搐/闪」修复锚（2026-09-25，真机取证）。
-//
-// 事实：插件的抽屉层叠带（遮罩 z1250 / 抽屉列 z1300）压过宿主弹层 portal 根
-// （`body > div { position: fixed; z-index: 1000 }` 包住
-// `[role="dialog"][aria-modal="true"]`）。popover band 里那条把根抬到 1400 的
-// 兜底规则原本以「抽屉开着」为门，但 marker 与绘制在整个关闭过渡里是不一致的：
-// 遮罩淡出 .2s、marker 翻转后 260ms 才移除，列 transform .28s，React 还要
-// ~200ms 才换 pane 子树。于是那一整个窗口里抬升失效、抽屉带盖住弹层。
-//
-// 真机实测（Android 16 WebView，快捷键弹层开着）：人为加上
-// data-sidebar-collapsed 后，根计算 z 1400 -> 1000，且
-// elementsFromPoint(0.85w, .30h) 命中的最顶层元素变成
-// [data-mobile-nav="backdrop"]；rgba(0,0,0,.45) 压在白底上 = 亮度 141，与报障
-// 人录屏里量到的 140（抽屉右缘 280px 之后）一致。这就是「抽搐/闪」，不是合成撕裂。
-//
-// 本文件钉住修复的两半，任一半回退都红。
+// Shortcut-modal flash: drawer stack (z1250/1300) outranks the host modal
+// portal root (z1000). Raising the root to 1400 must be gated on our backdrop
+// being present — the old drawer-open marker goes dark through the whole close
+// transition, so the drawer briefly covers the modal. Pins both halves of the fix.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

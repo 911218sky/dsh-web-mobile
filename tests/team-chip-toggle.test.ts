@@ -1,11 +1,7 @@
-// 团队 chip「再点关闭」的源码契约（2026-09-23，对账 0.1.7-rc.1）。
-//
-// 背景：宿主 agent-team 插件的触发器 onClick 只在关闭时 changeOpen(true)，开态时
-// 仅 panelRef.focus() —— 它永不 toggle；关闭只有 useDismissOnOutsidePointer
-// （document pointerdown，靶心在 root/panel 外）与 Escape 两条路。修复在
-// pointerdown 捕获期读开态、click 捕获期先派发一次合成 pointerdown（走宿主自己的
-// outside-dismiss）再吞掉那颗 click。本测试钉住「哪里介入、什么时候介入」这几个
-// 不可回退的判据。
+// Team chip re-tap-to-close: the host trigger never toggles while open (focus
+// only); dismiss is outside-pointerdown or Escape. The fix arm on pointerdown
+// capture, then on click capture synthesizes an outside pointerdown and
+// swallows the click. These tests pin where and when.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -21,9 +17,9 @@ const ENTRY = readFileSync(
 )
 
 test('选择器只认根的直接子 dialog 触发器与 body portal 面板标记', () => {
-  // 带 `>` 才不会误伤面板内部按钮；aria-haspopup 是 dialog（团队面板），不是 menu。
+  // Direct-child `>`; aria-haspopup is dialog (team panel), not menu.
   assert.match(SRC, /const TRIGGER_SELECTOR = '\[data-team-action\] > button\[aria-haspopup="dialog"\]'/)
-  // 面板 portal 到 body，用稳定标记而不是易变哈希类名。
+  // Panel portals to body — stable attribute, not a hashed class.
   assert.match(SRC, /const PANEL_SELECTOR = '\[data-team-panel\]'/)
   assert.doesNotMatch(SRC, /PANEL_SELECTOR = '\[class\*=/)
 })
@@ -48,12 +44,12 @@ test('只在同一颗触发器的紧随 click 上动手，且顺序是先派发�
   const end = SRC.indexOf('document.addEventListener', start)
   const body = SRC.slice(start, end)
   assert.match(body, /triggerFrom\(event\.target\) !== trigger/)
-  // 必须用 pointerdown：宿主的 dismiss 只监听 pointerdown（click 不听）。
+  // Host dismiss listens for pointerdown only, not click.
   assert.match(body, /new PointerEvent\('pointerdown'/)
-  // 靶心必须是真外部：document.body 不在 root 内、也不在面板内。
+  // Target must be outside root and panel (document.body).
   assert.match(body, /document\.body\.dispatchEvent/)
   assert.match(body, /event\.stopPropagation\(\)/)
-  // 顺序不可换：先派发关闭，再吞掉那颗 click。
+  // Dispatch close first, then swallow the click.
   assert.ok(
     body.indexOf('dispatchEvent') < body.indexOf('stopPropagation()'),
     '必须先派发合成 pointerdown 再 stopPropagation',

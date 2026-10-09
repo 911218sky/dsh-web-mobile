@@ -1,10 +1,8 @@
-// 2026-09-22 会话行交互契约（群内统一）：单击 = 选中、双击 = 打开、长按 = 改会话名。
-// 宿主 0.1.7 把「改会话名」挂在会话行标题的 dblclick 上（workspace 的
-// onRenameRequest），恰好和「双击 = 打开」撞同一个事件：双击会既打开会话又弹改名框。
-// 这个文件把三环钉住，防止以后有人顺手把任一环改回去：
-//   1) onDrawerDoubleClick 吞掉真实 dblclick，只放行我们自己派发的那一个；
-//   2) 长按计时器走 requestRowRename，只有拿不到标题时才退回 ⋯ 菜单；
-//   3) 移动样式把 _rowActions 常显——长按不再开 ⋯ 菜单，菜单不能因此失去触屏入口。
+// Session-row contract: click = select, double-click = open, long-press = rename.
+// Host 0.1.7 hangs rename on the title's dblclick, which conflicts with open.
+// Pins: (1) swallow real dblclick, pass only our synthetic one; (2) long-press
+// prefers requestRowRename, ⋯ menu only if no title; (3) _rowActions stay visible
+// on touch so the menu remains reachable after long-press no longer opens it.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

@@ -2,10 +2,9 @@
 //
 // The fixtures are hand-built fiber objects (only `memoizedProps` and `return`
 // are read), so the whole module is covered without a DOM, a renderer or a DSH
-// runtime. The measured shapes are the ones the live 0.1.5-rc.2 host renders:
-// the row item fiber is 3 hops above the tapped element and carries the id at
-// `props.node.id`, and a `ScopeProvider` ancestor carries the shape-plausible
-// string 'session-maybe' at `props.scope`.
+// runtime. Fixtures mirror the 0.1.5-rc.2 host: the row item fiber is 3 hops
+// above the tapped element with id at `props.node.id`, and a `ScopeProvider`
+// ancestor may carry a shape-plausible 'session-maybe' at `props.scope`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
@@ -91,8 +90,8 @@ test('membership is the only gate: every candidate is offered to the caller', ()
   // The unlisted candidate reached the predicate, so the rejection came from
   // membership and not from a shape filter inside the walk.
   assert.ok(seen.includes('session-fresh-9'), `predicate never saw the candidate: ${JSON.stringify(seen)}`)
-  // `scope` is not a session-id key, so the measured ScopeProvider hop is never
-  // even offered (its value is the shape-plausible string 'session-maybe').
+  // `scope` is not a session-id key, so a ScopeProvider hop is never offered
+  // (even with a shape-plausible 'session-maybe' value).
   seen.length = 0
   assert.equal(findSessionIdInFiber(chain({ scope: 'session-maybe' }), spy), null)
   assert.deepEqual(seen, [])

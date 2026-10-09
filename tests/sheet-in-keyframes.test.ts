@@ -1,10 +1,5 @@
-// #124 fix #2 (2026-09-25): the settings sheet entrance lost its opacity ramp.
-// Checker screencast scene 4 (docs/handover/2026-09-25-issue124-checker.md §四)
-// caught the 0.22s fade double-exposing the still-open drawer underneath the
-// panel (frame a005), so dsh-web-mobile-sheet-in must stay a pure slide-in:
-// no opacity keyframe at all, motion only. This pins the source keyframes —
-// an opacity ramp sneaking back in would resurrect the double-exposure with
-// every gate still green.
+// #124: settings sheet entrance must be a pure slide-in (no opacity keyframe).
+// An opacity ramp double-exposes the drawer under the panel during the 0.22s fade.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'

@@ -51,8 +51,7 @@ test('the observer re-shadows a freshly mounted editor inside the window', () =>
 test('the window is finite and restore closes it completely', () => {
   assert.match(SOURCE, /FOCUS_GUARD_WINDOW_MS = 800/)
   assert.match(SOURCE, /window\.setTimeout\(restore, FOCUS_GUARD_WINDOW_MS\)/)
-  // Regression pin (composer-keyboard-guard 2026-09-23 lesson): restore() must
-  // zero the timer and the window flag together, never leave either live.
+  // restore() must zero the timer and the window flag together.
   assert.match(SOURCE, /window\.clearTimeout\(windowTimer\)\s*\n\s*windowTimer = 0\s*\n\s*windowOpen = false/)
 })
 
@@ -64,11 +63,10 @@ test('a tap on the editing surface closes the window early', () => {
 })
 
 test('the window keeps a focusin fallback that blurs synchronously', () => {
-  // 2026-09-29 headless correction: the host focuses the remounted editor
-  // from the commit's synchronous phase, before the observer microtask can
-  // shadow it — the window must therefore blur any focus that still lands
-  // on the editing surface while it is open (composer-keyboard-guard's
-  // real-device-proven recipe). Capture phase, gated on the window flag.
+  // The host may focus the remounted editor in the commit's sync phase,
+  // before the observer microtask can shadow it — blur any focus that lands
+  // on the editing surface while the window is open. Capture phase, gated
+  // on the window flag.
   assert.match(SOURCE, /const onFocusIn = \(event: Event\): void => \{\s*\n\s*if \(!windowOpen\) return\s*\n\s*const target = event\.target\s*\n\s*if \(target instanceof HTMLElement && target\.closest\(COMPOSER_INPUT_SELECTOR\) !== null\) target\.blur\(\)/)
   assert.match(SOURCE, /document\.addEventListener\('focusin', onFocusIn, true\)/)
   assert.match(SOURCE, /document\.removeEventListener\('focusin', onFocusIn, true\)/)
